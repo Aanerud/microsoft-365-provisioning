@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { ConfidentialClientApplication } from '@azure/msal-node';
+import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -9,31 +10,26 @@ const tenantId = process.env.AZURE_TENANT_ID;
 const clientId = process.env.AZURE_CLIENT_ID;
 const clientSecret = process.env.AZURE_CLIENT_SECRET;
 
-const msalConfig = {
-  auth: {
-    clientId: clientId,
-    authority: `https://login.microsoftonline.com/${tenantId}`,
-    clientSecret: clientSecret,
-  }
-};
-
-const cca = new ConfidentialClientApplication(msalConfig);
+if (!tenantId || !clientId || !clientSecret) {
+  console.error('❌ Missing required environment variables');
+  process.exit(1);
+}
 
 console.log('🔍 Checking Application Permissions for Graph Connectors...\n');
 
 try {
-  // Get token with client credentials
-  const result = await cca.acquireTokenByClientCredential({
+  const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+
+  const authProvider = new TokenCredentialAuthenticationProvider(credential, {
     scopes: ['https://graph.microsoft.com/.default']
   });
 
-  console.log('✅ Successfully acquired token with client credentials\n');
+  console.log('✅ Successfully created client credentials\n');
 
-  // Create Graph client
-  const client = Client.init({
-    authProvider: (done) => {
-      done(null, result.accessToken);
-    }
+  // Create Graph client (v1.0)
+  const client = Client.initWithMiddleware({
+    authProvider,
+    defaultVersion: 'v1.0'
   });
 
   // Try to list connections
@@ -57,10 +53,8 @@ try {
 
   // Try to create an item (beta endpoint)
   console.log('Testing: PUT /beta/external/connections/m365provisionpeople/items/test-item');
-  const betaClient = Client.init({
-    authProvider: (done) => {
-      done(null, result.accessToken);
-    },
+  const betaClient = Client.initWithMiddleware({
+    authProvider,
     defaultVersion: 'beta'
   });
 

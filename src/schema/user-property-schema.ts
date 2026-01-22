@@ -555,12 +555,25 @@ export function getPropertyMetadata(columnName: string): PropertyMetadata | unde
 }
 
 /**
+ * Internal CSV columns that are NOT enrichment properties
+ * These are used by the tool for mapping/tracking but shouldn't go to Graph Connectors
+ */
+const INTERNAL_CSV_COLUMNS = new Set([
+  'name',        // Maps to displayName (Option A)
+  'email',       // Maps to userPrincipalName (Option A)
+  'role',        // Internal tracking only
+  'ManagerEmail', // Used for manager assignment (Option A)
+]);
+
+/**
  * Extract custom properties from CSV columns
- * (any column not in the standard schema)
+ * (any column not in the standard schema AND not an internal column)
  * These custom properties will be handled by Option B (Graph Connectors)
  */
 export function getCustomProperties(csvColumns: string[]): string[] {
-  return csvColumns.filter(col => !isStandardProperty(col));
+  return csvColumns.filter(col =>
+    !isStandardProperty(col) && !INTERNAL_CSV_COLUMNS.has(col)
+  );
 }
 
 /**

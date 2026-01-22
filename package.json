@@ -12,6 +12,7 @@
     "enrich-profiles:setup": "npm run build && node dist/enrich-profiles.js --setup",
     "enrich-profiles:dry-run": "npm run build && node dist/enrich-profiles.js --dry-run",
     "enrich-profiles:wait": "npm run build && node dist/wait-for-schema.js",
+    "enrich-profiles:delete": "node tools/admin/delete-connection.mjs",
     "logout": "npm run build && node dist/provision.js --logout",
     "list-users": "npm run build && node dist/graph-client.js list-users",
     "list-licenses": "npm run build && node dist/graph-client.js list-licenses",
@@ -19,6 +20,8 @@
     "test-connection": "npm run build && node dist/graph-client.js test-connection",
     "test-beta": "npm run build && node dist/graph-beta-client.js check-availability",
     "cleanup": "npm run build && node dist/provision.js --cleanup",
+    "reset-tenant": "npm run build && node dist/reset-tenant.js",
+    "reset-tenant:confirm": "npm run build && node dist/reset-tenant.js --confirm",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },

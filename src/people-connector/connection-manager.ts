@@ -31,6 +31,8 @@ export class PeopleConnectionManager {
       id: this.connectionId,
       name,
       description,
+      // REQUIRED for people data connectors
+      contentCategory: 'people',
       activitySettings: {
         urlToItemResolvers: []
       }
