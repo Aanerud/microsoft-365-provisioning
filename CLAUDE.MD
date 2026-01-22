@@ -102,7 +102,8 @@ GRAPH_API_ENDPOINT=https://graph.microsoft.com
 USE_BETA_ENDPOINTS=true
 
 # Provisioning Configuration
-LICENSE_SKU_ID=your-license-sku-id
+# Multiple licenses supported (comma-separated)
+LICENSE_SKU_IDS=sku-id-1,sku-id-2
 USER_DOMAIN=yourdomain.onmicrosoft.com
 
 # Auth Server (Option A)
@@ -195,7 +196,8 @@ M365-Agent-Provisioning/
 |------|---------|
 | `src/provision.ts` | Main CLI - Option A user provisioning |
 | `src/enrich-profiles.ts` | Main CLI - Option B profile enrichment |
-| `src/graph-client.ts` | Microsoft Graph API client |
+| `src/reset-tenant.ts` | Tenant reset with account protection |
+| `src/graph-client.ts` | Microsoft Graph API client (supports multiple licenses) |
 | `src/graph-beta-client.ts` | Graph Beta API client |
 | `src/state-manager.ts` | State tracking (CREATE/UPDATE/NOOP) |
 | `src/export.ts` | JSON configuration export |
@@ -231,8 +233,12 @@ M365-Agent-Provisioning/
 npm run provision              # Standard provisioning
 npm run provision:beta         # With beta Graph API
 npm run list-users             # List provisioned users
-npm run list-licenses          # List available licenses
+npm run list-licenses          # List available licenses (uses delegated auth)
 npm run cleanup                # Delete provisioned users
+
+# Tenant Management
+npm run reset-tenant           # Preview users to delete (dry run)
+npm run reset-tenant:confirm   # Delete all non-admin users
 
 # Option B - Profile Enrichment
 npm run enrich-profiles:setup  # Setup Graph Connector
@@ -242,7 +248,7 @@ npm run enrich-profiles:wait   # Wait for schema ready
 
 # Authentication
 npm run logout                 # Clear cached tokens
-npm run test-connection        # Test Graph API
+npm run test-connection        # Test Graph API (uses delegated auth)
 npm run test-beta              # Test Beta API
 
 # Development
@@ -340,6 +346,24 @@ npm run enrich-profiles
 npm run provision          # Updates standard properties
 npm run enrich-profiles    # Updates enrichment data
 ```
+
+### Tenant Reset (Start Fresh)
+
+```bash
+# 1. Preview what will be deleted (safe - no changes)
+npm run reset-tenant
+
+# 2. Actually delete all non-admin users
+npm run reset-tenant:confirm
+
+# 3. Provision new users
+npm run provision -- --csv config/new-users.csv
+```
+
+**Protected accounts are NEVER deleted:**
+- Email patterns: `admin@*`, `administrator@*`, `root@*`, `systemadmin@*`
+- Azure AD roles: Global Administrator, Security Administrator, etc.
+- Custom exclusions from `.env` (PROTECTED_EMAILS, PROTECTED_EMAIL_PATTERNS)
 
 ## Troubleshooting
 

@@ -17,6 +17,7 @@ import {
   isStandardProperty,
   getPropertyMetadata,
   parsePropertyValue,
+  getCustomProperties,
 } from './schema/user-property-schema.js';
 
 export interface UserState {
@@ -110,11 +111,11 @@ export class StateManager {
     const deleteActions: StateAction[] = [];
     const noChange: StateAction[] = [];
 
-    // Detect custom properties (columns not in standard schema)
-    const customPropertiesDetected = csvColumns.filter(col => !isStandardProperty(col));
+    // Detect custom properties (columns not in standard schema, excluding internal columns)
+    const customPropertiesDetected = getCustomProperties(csvColumns);
     if (customPropertiesDetected.length > 0) {
       console.log(
-        `  Detected ${customPropertiesDetected.length} custom properties: ${customPropertiesDetected.join(', ')}`
+        `  Detected ${customPropertiesDetected.length} custom enrichment properties: ${customPropertiesDetected.join(', ')}`
       );
     }
 

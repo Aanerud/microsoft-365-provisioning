@@ -14,12 +14,34 @@ interface UserCreateParams {
     password: string;
     forceChangePasswordNextSignIn: boolean;
   };
-  // Standard fields (optional)
-  usageLocation?: string;
-  // Beta-only fields (optional)
-  employeeType?: string;
-  companyName?: string;
+  // Basic info
+  givenName?: string;
+  surname?: string;
+  // Contact info
+  mobilePhone?: string;
+  businessPhones?: string[];
+  otherMails?: string[];
+  faxNumber?: string;
+  // Address info
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  streetAddress?: string;
   officeLocation?: string;
+  // Job info
+  jobTitle?: string;
+  department?: string;
+  companyName?: string;
+  employeeId?: string;
+  employeeType?: string;
+  employeeHireDate?: string;
+  employeeOrgData?: Record<string, any>;
+  // Preferences
+  usageLocation?: string;
+  preferredLanguage?: string;
+  // Security
+  passwordPolicies?: string;
 }
 
 interface User {
@@ -123,10 +145,12 @@ export class GraphClient {
 
     this.client = Client.initWithMiddleware({
       authProvider,
+      defaultVersion: 'v1.0',
     });
 
     this.betaClient = Client.initWithMiddleware({
       authProvider,
+      defaultVersion: 'beta',
     });
   }
 
@@ -135,6 +159,53 @@ export class GraphClient {
    */
   private getClient(forceBeta: boolean = false): Client {
     return (this.useBeta || forceBeta) ? this.betaClient : this.client;
+  }
+
+  /**
+   * Sleep helper for retry logic
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Execute request with retry on throttling (429) and service unavailable (503)
+   * Best practice: Use Retry-After header value for backoff
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+        const statusCode = error.statusCode || error.code;
+
+        // Handle throttling (429) and service unavailable (503)
+        if (statusCode === 429 || statusCode === 503) {
+          if (attempt < maxRetries) {
+            // Use Retry-After header if available, otherwise exponential backoff
+            const retryAfter = error.headers?.['retry-after'];
+            const delayMs = retryAfter
+              ? parseInt(retryAfter, 10) * 1000
+              : Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+
+            console.warn(`⚠ Rate limited (${statusCode}), retrying in ${delayMs / 1000}s...`);
+            await this.sleep(delayMs);
+            continue;
+          }
+        }
+
+        // Don't retry other errors
+        throw error;
+      }
+    }
+
+    throw lastError;
   }
 
   /**
@@ -240,6 +311,53 @@ export class GraphClient {
   }
 
   /**
+   * Assign multiple licenses to user in a single API call
+   */
+  async assignLicenses(userId: string, skuIds: string[]): Promise<{ successful: string[]; failed: Array<{ skuId: string; error: string }> }> {
+    const successful: string[] = [];
+    const failed: Array<{ skuId: string; error: string }> = [];
+
+    if (skuIds.length === 0) {
+      return { successful, failed };
+    }
+
+    try {
+      // Microsoft Graph supports assigning multiple licenses in a single call
+      await this.client.api(`/users/${userId}/assignLicense`).post({
+        addLicenses: skuIds.map(skuId => ({ skuId })),
+        removeLicenses: [],
+      });
+
+      // All succeeded
+      successful.push(...skuIds);
+      console.log(`✓ Assigned ${skuIds.length} license(s) to user: ${userId}`);
+    } catch (error: any) {
+      // If batch assignment fails, try individually to identify which ones failed
+      console.warn(`⚠ Batch license assignment failed, trying individually...`);
+
+      for (const skuId of skuIds) {
+        try {
+          await this.client.api(`/users/${userId}/assignLicense`).post({
+            addLicenses: [{ skuId }],
+            removeLicenses: [],
+          });
+          successful.push(skuId);
+        } catch (individualError: any) {
+          if (individualError.code === 'Request_InvalidValue') {
+            // License already assigned - treat as success
+            successful.push(skuId);
+            console.log(`⚠ License already assigned: ${skuId}`);
+          } else {
+            failed.push({ skuId, error: individualError.message || String(individualError) });
+          }
+        }
+      }
+    }
+
+    return { successful, failed };
+  }
+
+  /**
    * List all available licenses in the tenant
    */
   async listLicenses(): Promise<License[]> {
@@ -248,17 +366,43 @@ export class GraphClient {
   }
 
   /**
-   * List all users (filtered by user type if needed)
+   * List all users with all Option A properties (handles pagination)
+   * Best practice: Uses $select to only fetch needed properties
+   * Best practice: Follows @odata.nextLink for pagination
    */
   async listUsers(filter?: string): Promise<User[]> {
-    let request = this.client.api('/users').select('id,displayName,userPrincipalName,mail');
+    // Select all Option A properties needed for state comparison
+    const selectFields = [
+      'id', 'displayName', 'userPrincipalName', 'mail', 'mailNickname',
+      'givenName', 'surname', 'jobTitle', 'department', 'companyName',
+      'employeeId', 'employeeType', 'employeeHireDate',
+      'officeLocation', 'streetAddress', 'city', 'state', 'country', 'postalCode',
+      'mobilePhone', 'businessPhones', 'faxNumber',
+      'usageLocation', 'preferredLanguage', 'accountEnabled',
+    ].join(',');
 
+    const allUsers: User[] = [];
+    let nextLink: string | undefined;
+
+    // Initial request
+    let request = this.client.api('/users').select(selectFields).top(100);
     if (filter) {
       request = request.filter(filter);
     }
 
-    const response = await request.get();
-    return response.value;
+    let response = await this.executeWithRetry(() => request.get());
+    allUsers.push(...response.value);
+    nextLink = response['@odata.nextLink'];
+
+    // Follow pagination links (best practice: always handle @odata.nextLink)
+    // Uses retry logic for throttling protection
+    while (nextLink) {
+      response = await this.executeWithRetry(() => this.client.api(nextLink!).get());
+      allUsers.push(...response.value);
+      nextLink = response['@odata.nextLink'];
+    }
+
+    return allUsers;
   }
 
   /**
@@ -376,10 +520,31 @@ export class GraphClient {
     displayName: string;
     email: string;
     password?: string;
-    employeeType?: string;
-    companyName?: string;
+    // Basic info
+    givenName?: string;
+    surname?: string;
+    // Contact info
+    mobilePhone?: string;
+    businessPhones?: string[];
+    otherMails?: string[];
+    faxNumber?: string;
+    // Address info
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+    streetAddress?: string;
     officeLocation?: string;
+    // Job info
+    jobTitle?: string;
+    department?: string;
+    companyName?: string;
+    employeeId?: string;
+    employeeType?: string;
+    employeeHireDate?: string;
+    // Preferences
     usageLocation?: string;
+    preferredLanguage?: string;
   }>): Promise<{
     successful: User[];
     failed: Array<{ user: any; error: string }>;
@@ -409,13 +574,35 @@ export class GraphClient {
           },
         };
 
-        // Add standard fields if provided
-        if (user.usageLocation) userParams.usageLocation = user.usageLocation;
+        // Basic info
+        if (user.givenName) userParams.givenName = user.givenName;
+        if (user.surname) userParams.surname = user.surname;
 
-        // Add beta fields if provided
-        if (user.employeeType) userParams.employeeType = user.employeeType;
-        if (user.companyName) userParams.companyName = user.companyName;
+        // Contact info
+        if (user.mobilePhone) userParams.mobilePhone = user.mobilePhone;
+        if (user.businessPhones) userParams.businessPhones = user.businessPhones;
+        if (user.otherMails) userParams.otherMails = user.otherMails;
+        if (user.faxNumber) userParams.faxNumber = user.faxNumber;
+
+        // Address info
+        if (user.city) userParams.city = user.city;
+        if (user.state) userParams.state = user.state;
+        if (user.country) userParams.country = user.country;
+        if (user.postalCode) userParams.postalCode = user.postalCode;
+        if (user.streetAddress) userParams.streetAddress = user.streetAddress;
         if (user.officeLocation) userParams.officeLocation = user.officeLocation;
+
+        // Job info
+        if (user.jobTitle) userParams.jobTitle = user.jobTitle;
+        if (user.department) userParams.department = user.department;
+        if (user.companyName) userParams.companyName = user.companyName;
+        if (user.employeeId) userParams.employeeId = user.employeeId;
+        if (user.employeeType) userParams.employeeType = user.employeeType;
+        if (user.employeeHireDate) userParams.employeeHireDate = user.employeeHireDate;
+
+        // Preferences
+        if (user.usageLocation) userParams.usageLocation = user.usageLocation;
+        if (user.preferredLanguage) userParams.preferredLanguage = user.preferredLanguage;
 
         return {
           id: `${i + index}`,
@@ -429,8 +616,8 @@ export class GraphClient {
       });
 
       try {
-        // Use beta client if beta fields are present
-        const hasBetaFields = batch.some(u => u.employeeType || u.companyName || u.officeLocation);
+        // Use beta client for employeeHireDate or other beta-only fields
+        const hasBetaFields = batch.some(u => u.employeeHireDate);
         const client = hasBetaFields ? this.getClient(true) : this.getClient(false);
 
         const batchResponse = await client.api('/$batch').post({
@@ -491,7 +678,8 @@ export class GraphClient {
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
       const batch = updates.slice(i, i + BATCH_SIZE);
 
-      // Build batch request
+      // Build batch request with Prefer: return=minimal for efficiency
+      // Best practice: Use return=minimal when response body isn't needed
       const batchRequests = batch.map((update, index) => ({
         id: `${i + index}`,
         method: 'PATCH',
@@ -499,14 +687,15 @@ export class GraphClient {
         body: update.updates,
         headers: {
           'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
         },
       }));
 
       try {
-        // Use beta client if beta fields are present
+        // Use beta client if beta-only fields are present
         const hasBetaFields = batch.some(u =>
           Object.keys(u.updates).some(key =>
-            ['employeeType', 'companyName', 'officeLocation'].includes(key)
+            ['employeeHireDate', 'employeeLeaveDateTime', 'employeeOrgData', 'preferredDataLocation'].includes(key)
           )
         );
         const client = hasBetaFields ? this.getClient(true) : this.getClient(false);
@@ -777,6 +966,9 @@ export class GraphClient {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const command = process.argv[2];
 
+  // Commands that require delegated permissions (must use browser auth)
+  const delegatedCommands = ['list-licenses', 'list-users', 'test-connection', 'check-mailboxes'];
+
   // Check for required environment variables
   const tenantId = process.env.AZURE_TENANT_ID;
   const clientId = process.env.AZURE_CLIENT_ID;
@@ -789,15 +981,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
 
   try {
-    // Try client secret first (backward compatibility), then fall back to MSAL
     let client: GraphClient;
 
-    if (clientSecret) {
-      // Legacy: Use client secret
-      console.log('Using client secret authentication (legacy)...\n');
+    // Use browser auth for commands requiring delegated permissions
+    if (delegatedCommands.includes(command)) {
+      const { BrowserAuthServer } = await import('./auth/browser-auth-server.js');
+      const authServer = new BrowserAuthServer({ tenantId, clientId });
+      console.log('Starting browser authentication (delegated permissions)...\n');
+      const authResult = await authServer.authenticate();
+      console.log(`✅ Authenticated as: ${authResult.account.username}\n`);
+      client = new GraphClient({ accessToken: authResult.accessToken });
+    } else if (clientSecret) {
+      // Use client secret for application-only operations
+      console.log('Using client secret authentication (application permissions)...\n');
       client = new GraphClient({ tenantId, clientId, clientSecret });
     } else {
-      // Modern: Use browser-based MSAL
+      // Fallback to browser auth if no client secret
       const { BrowserAuthServer } = await import('./auth/browser-auth-server.js');
       const authServer = new BrowserAuthServer({ tenantId, clientId });
       console.log('Starting browser authentication...\n');

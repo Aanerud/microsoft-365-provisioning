@@ -60,11 +60,12 @@ npm run enrich-profiles -- --csv config/full-team.csv
 | Feature | What Happens |
 |---------|--------------|
 | **User Creation** | Creates Entra ID accounts from CSV |
-| **License Assignment** | Automatically assigns M365 E3/E5 licenses |
+| **Multi-License Assignment** | Assigns multiple M365 licenses (E5 + Copilot, etc.) |
 | **Manager Hierarchy** | Sets up reporting structure via `ManagerEmail` column |
 | **Profile Enrichment** | Adds skills, interests, certifications to profiles |
 | **Custom Properties** | Any extra CSV column becomes searchable in Copilot |
 | **State Management** | Detects CREATE/UPDATE/NOOP - won't duplicate users |
+| **Tenant Reset** | Safely delete all users except protected admin accounts |
 
 ---
 
@@ -102,9 +103,16 @@ Edit `.env`:
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CLIENT_SECRET=your-client-secret  # For profile enrichment
-LICENSE_SKU_ID=05e9a617-0261-4cee-bb44-138d3ef5d965  # M365 E3
 USER_DOMAIN=yourdomain.onmicrosoft.com
+
+# Single license
+LICENSE_SKU_IDS=05e9a617-0261-4cee-bb44-138d3ef5d965
+
+# Multiple licenses (comma-separated) - e.g., E5 + Copilot
+# LICENSE_SKU_IDS=e23e2b65-8fc9-4036-a902-a17473ff6d26,639dec6b-bb19-468b-871c-c5c441c4b0cb
 ```
+
+Run `npm run list-licenses` to see available licenses in your tenant.
 
 ### 3. Install & Build
 
@@ -138,6 +146,30 @@ npm run enrich-profiles:wait  # Wait for schema to be ready (~10 min)
 Then enrich:
 ```bash
 npm run enrich-profiles -- --csv config/agents-template.csv
+```
+
+### Tenant Reset: Start Fresh
+
+Need to clean up and start over? The reset script safely removes all provisioned users while protecting admin accounts.
+
+```bash
+# Preview what will be deleted (safe - no changes made)
+npm run reset-tenant
+
+# Actually delete users (requires confirmation flag)
+npm run reset-tenant:confirm
+```
+
+**Protected accounts are NEVER deleted:**
+- Email patterns: `admin@*`, `administrator@*`, `root@*`, `systemadmin@*`
+- Azure AD roles: Global Administrator, Security Administrator, User Administrator
+- Custom exclusions configured in `.env`
+
+**Typical workflow for fresh provisioning:**
+```bash
+npm run reset-tenant           # 1. Preview what will be deleted
+npm run reset-tenant:confirm   # 2. Delete all non-admin users
+npm run provision -- --csv config/new-users.csv  # 3. Provision new users
 ```
 
 ---
@@ -206,6 +238,9 @@ output/
 ├── src/                    # TypeScript source
 │   ├── provision.ts        # User provisioning (Option A)
 │   ├── enrich-profiles.ts  # Profile enrichment (Option B)
+│   ├── reset-tenant.ts     # Tenant reset with account protection
+│   ├── graph-client.ts     # Microsoft Graph API client
+│   ├── safety/             # Account protection modules
 │   └── people-connector/   # Graph Connector modules
 ├── config/                 # Your CSV files go here
 ├── docs/                   # Deep-dive documentation
@@ -240,19 +275,26 @@ This is a **learning project**. We documented everything we discovered:
 
 ```bash
 # Provisioning
-npm run provision                      # Create users
-npm run provision -- --dry-run         # Preview only
-npm run list-users                     # List provisioned users
+npm run provision                      # Create users from CSV
+npm run provision -- --dry-run         # Preview only (no changes)
+npm run provision -- --csv config/myfile.csv  # Use specific CSV
+
+# Tenant Management
+npm run reset-tenant                   # Preview users to delete (dry run)
+npm run reset-tenant:confirm           # Actually delete all non-admin users
+npm run list-users                     # List all users in tenant
 npm run list-licenses                  # Show available licenses
 
-# Enrichment
-npm run enrich-profiles:setup          # Setup Graph Connector
+# Profile Enrichment (Graph Connector)
+npm run enrich-profiles:setup          # Setup Graph Connector (first time)
+npm run enrich-profiles:wait           # Wait for schema ready (~10 min)
 npm run enrich-profiles                # Enrich user profiles
 npm run enrich-profiles:dry-run        # Preview enrichment
 
 # Utilities
-npm run logout                         # Clear auth tokens
+npm run logout                         # Clear cached auth tokens
 npm run test-connection                # Verify Graph API access
+npm run build                          # Compile TypeScript
 ```
 
 ---

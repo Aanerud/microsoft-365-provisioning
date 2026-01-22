@@ -41,15 +41,23 @@ interface ProvisionOptions {
 class AgentProvisioner {
   private graphClient: GraphClient;
   private exporter: ConfigExporter;
-  private licenseSkuId: string;
+  private licenseSkuIds: string[];
 
   constructor(graphClient: GraphClient) {
     this.graphClient = graphClient;
     this.exporter = new ConfigExporter();
-    this.licenseSkuId = process.env.LICENSE_SKU_ID || '';
 
-    if (!this.licenseSkuId) {
-      console.warn('⚠ WARNING: LICENSE_SKU_ID not set in .env - license assignment will be skipped');
+    // Support both LICENSE_SKU_IDS (comma-separated) and legacy LICENSE_SKU_ID
+    const skuIdsEnv = process.env.LICENSE_SKU_IDS || process.env.LICENSE_SKU_ID || '';
+    this.licenseSkuIds = skuIdsEnv
+      .split(',')
+      .map(id => id.trim())
+      .filter(id => id.length > 0);
+
+    if (this.licenseSkuIds.length === 0) {
+      console.warn('⚠ WARNING: LICENSE_SKU_IDS not set in .env - license assignment will be skipped');
+    } else {
+      console.log(`📋 Configured ${this.licenseSkuIds.length} license(s) for assignment`);
     }
   }
 
@@ -142,9 +150,9 @@ class AgentProvisioner {
       officeLocation: agent.officeLocation,
     });
 
-    // Step 2: Assign license
-    if (!options.skipLicenses && this.licenseSkuId) {
-      await this.graphClient.assignLicense(user.id, this.licenseSkuId);
+    // Step 2: Assign licenses
+    if (!options.skipLicenses && this.licenseSkuIds.length > 0) {
+      await this.graphClient.assignLicenses(user.id, this.licenseSkuIds);
     }
 
     const agentConfig: AgentConfig = {
@@ -257,17 +265,27 @@ class AgentProvisioner {
       createCount = successful.length;
 
       // Assign licenses
-      if (!options.skipLicenses && this.licenseSkuId) {
-        console.log(`  Assigning licenses...`);
+      if (!options.skipLicenses && this.licenseSkuIds.length > 0) {
+        console.log(`  Assigning ${this.licenseSkuIds.length} license(s) to each user...`);
         for (const user of successful) {
           try {
-            await this.graphClient.assignLicense(user.id, this.licenseSkuId);
+            const result = await this.graphClient.assignLicenses(user.id, this.licenseSkuIds);
+            if (result.failed.length > 0) {
+              for (const failure of result.failed) {
+                logger.warn(`Failed to assign license ${failure.skuId} to ${user.displayName}`, {
+                  userId: user.id,
+                  skuId: failure.skuId,
+                  error: failure.error,
+                });
+                console.warn(`⚠ Failed to assign license ${failure.skuId} to ${user.displayName}: ${failure.error}`);
+              }
+            }
           } catch (error: any) {
-            logger.warn(`Failed to assign license to ${user.displayName}`, {
+            logger.warn(`Failed to assign licenses to ${user.displayName}`, {
               userId: user.id,
               error: error.message,
             });
-            console.warn(`⚠ Failed to assign license to ${user.displayName}: ${error.message}`);
+            console.warn(`⚠ Failed to assign licenses to ${user.displayName}: ${error.message}`);
           }
         }
       }
