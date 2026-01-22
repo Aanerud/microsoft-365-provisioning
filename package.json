@@ -1,0 +1,53 @@
+{
+  "name": "m365-agent-provisioning",
+  "version": "1.0.0",
+  "description": "Bulk provisioning tool for Microsoft 365 user accounts with browser-based MSAL authentication",
+  "main": "dist/provision.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "provision": "npm run build && node dist/provision.js",
+    "provision:beta": "npm run build && node dist/provision.js --use-beta",
+    "enrich-profiles": "npm run build && node dist/enrich-profiles.js",
+    "enrich-profiles:setup": "npm run build && node dist/enrich-profiles.js --setup",
+    "enrich-profiles:dry-run": "npm run build && node dist/enrich-profiles.js --dry-run",
+    "enrich-profiles:wait": "npm run build && node dist/wait-for-schema.js",
+    "logout": "npm run build && node dist/provision.js --logout",
+    "list-users": "npm run build && node dist/graph-client.js list-users",
+    "list-licenses": "npm run build && node dist/graph-client.js list-licenses",
+    "check-mailboxes": "npm run build && node dist/graph-client.js check-mailboxes",
+    "test-connection": "npm run build && node dist/graph-client.js test-connection",
+    "test-beta": "npm run build && node dist/graph-beta-client.js check-availability",
+    "cleanup": "npm run build && node dist/provision.js --cleanup",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "microsoft-365",
+    "azure-ad",
+    "graph-api",
+    "msal",
+    "msal-browser",
+    "user-provisioning",
+    "browser-authentication"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@azure/identity": "^4.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "csv-parse": "^5.5.3",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "open": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
