@@ -373,9 +373,28 @@ npm run cleanup
 # Check available licenses
 npm run list-licenses
 
-# Assign licenses manually
-npm run assign-licenses
+# Update licenses for all users
+npm run update-licenses -- --csv config/your-users.csv
 ```
+
+### Issue: "Need to add a new license to existing users"
+
+When you add a new license to `LICENSE_SKU_IDS` in `.env` (e.g., adding Copilot license), existing users won't automatically get it. The provisioning command only assigns licenses during user creation.
+
+**Solution**: Use the dedicated license update command:
+```bash
+# Preview which licenses would be added
+npm run update-licenses -- --dry-run --csv config/your-users.csv
+
+# Apply the license updates
+npm run update-licenses -- --csv config/your-users.csv
+```
+
+This command:
+- Reads users from your CSV
+- Checks their current licenses
+- Adds any missing licenses from `LICENSE_SKU_IDS`
+- Skips licenses already assigned (idempotent)
 
 ### Issue: "CSV parsing error"
 

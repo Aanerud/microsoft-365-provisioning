@@ -279,11 +279,16 @@ npm run provision                      # Create users from CSV
 npm run provision -- --dry-run         # Preview only (no changes)
 npm run provision -- --csv config/myfile.csv  # Use specific CSV
 
+# License Management
+npm run list-licenses                  # Show available licenses
+npm run update-licenses                # Add missing licenses to users
+npm run update-licenses -- --csv config/myfile.csv  # Update licenses for specific CSV
+npm run update-licenses -- --dry-run   # Preview license changes
+
 # Tenant Management
 npm run reset-tenant                   # Preview users to delete (dry run)
 npm run reset-tenant:confirm           # Actually delete all non-admin users
 npm run list-users                     # List all users in tenant
-npm run list-licenses                  # Show available licenses
 
 # Profile Enrichment (Graph Connector)
 npm run enrich-profiles:setup          # Setup Graph Connector (first time)

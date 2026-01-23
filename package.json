@@ -16,6 +16,7 @@
     "logout": "npm run build && node dist/provision.js --logout",
     "list-users": "npm run build && node dist/graph-client.js list-users",
     "list-licenses": "npm run build && node dist/graph-client.js list-licenses",
+    "update-licenses": "npm run build && node dist/update-licenses.js",
     "check-mailboxes": "npm run build && node dist/graph-client.js check-mailboxes",
     "test-connection": "npm run build && node dist/graph-client.js test-connection",
     "test-beta": "npm run build && node dist/graph-beta-client.js check-availability",
