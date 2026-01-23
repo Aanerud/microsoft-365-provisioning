@@ -196,6 +196,7 @@ M365-Agent-Provisioning/
 |------|---------|
 | `src/provision.ts` | Main CLI - Option A user provisioning |
 | `src/enrich-profiles.ts` | Main CLI - Option B profile enrichment |
+| `src/update-licenses.ts` | Add missing licenses to existing users |
 | `src/reset-tenant.ts` | Tenant reset with account protection |
 | `src/graph-client.ts` | Microsoft Graph API client (supports multiple licenses) |
 | `src/graph-beta-client.ts` | Graph Beta API client |
@@ -234,6 +235,7 @@ npm run provision              # Standard provisioning
 npm run provision:beta         # With beta Graph API
 npm run list-users             # List provisioned users
 npm run list-licenses          # List available licenses (uses delegated auth)
+npm run update-licenses        # Add missing licenses to existing users
 npm run cleanup                # Delete provisioned users
 
 # Tenant Management
