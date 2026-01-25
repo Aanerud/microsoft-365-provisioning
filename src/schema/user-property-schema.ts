@@ -48,6 +48,8 @@ export interface PropertyMetadata {
   handledBy: 'optionA' | 'optionB';
   /** For Option B properties: the official Microsoft Graph people data label (if available) */
   peopleDataLabel?: string | null;
+  /** For Profile API properties: the endpoint path (e.g., '/profile/languages') */
+  profileApiEndpoint?: string;
 }
 
 /**
@@ -480,6 +482,17 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     handledBy: 'optionB',
     peopleDataLabel: 'personAwards',
   },
+  {
+    name: 'languages',
+    type: 'array',
+    writable: true,
+    category: 'personal',
+    graphPath: 'languages',
+    betaOnly: false,
+    description: 'Languages the user speaks with proficiency levels. Format: [{"language":"Norwegian","proficiency":"native"}]. Proficiency values: elementary, limitedWorking, professionalWorking, fullProfessional, nativeOrBilingual',
+    handledBy: 'optionB',
+    peopleDataLabel: null, // Note: personLanguage not yet supported by Graph Connectors
+  },
 
   // ===== SECURITY =====
   {
@@ -758,4 +771,12 @@ export function parsePropertyValue(propertyName: string, csvValue: string): any 
     default:
       return csvValue;
   }
+}
+
+/**
+ * Get properties that use the Profile API (have profileApiEndpoint defined)
+ * These require delegated auth and go through /users/{id}/profile/* endpoints
+ */
+export function getProfileApiProperties(): PropertyMetadata[] {
+  return USER_PROPERTY_SCHEMA.filter(prop => prop.profileApiEndpoint !== undefined);
 }

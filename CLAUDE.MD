@@ -35,16 +35,21 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │  OPTION B: Profile Enrichment                                   │
 │  - Creates Graph Connector connection                           │
-│  - Ingests "People Data" (skills, certifications, etc.)         │
+│  - Registers as profile source (beta API)                       │
+│  - Configures profile source prioritization                     │
+│  - Ingests "People Data" (skills, languages, aboutMe, etc.)     │
 │  - Data searchable in M365 Copilot                              │
 │  - Auth: OAuth 2.0 Client Credentials Flow (app-only)           │
 └────────────────┬────────────────────────────────────────────────┘
                  │
-                 │ Application Permissions (ExternalItem.ReadWrite.OwnedBy)
+                 │ Application Permissions (ExternalItem.ReadWrite.OwnedBy,
+                 │                          PeopleSettings.ReadWrite.All)
                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Microsoft Graph Connectors API (Beta)                          │
 │  POST /external/connections, PUT /external/connections/{id}/items/{id} │
+│  POST /admin/people/profileSources (register profile source)    │
+│  PATCH /admin/people/profilePropertySettings/{id} (prioritize)  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,6 +62,16 @@
 | **Auth** | Delegated (user signs in) | Application (client secret) |
 | **Data Stored** | Entra ID directory | Graph Connector index |
 | **Searchable In** | GAL, Teams, etc. | M365 Copilot, Search |
+| **Custom Properties** | N/A | VTeam, CostCenter, languages, etc. |
+
+### Custom Properties
+
+All custom organization properties (VTeam, BenefitPlan, CostCenter, languages, etc.) flow through **Option B (Graph Connectors)**. They are:
+- Stored in the Graph Connector index
+- Searchable via M365 Copilot ("Who speaks French?", "Find people on VTeam Alpha")
+- Displayed as profile notes during preview
+
+**Note**: We previously used Entra ID extension attributes (`onPremisesExtensionAttributes`) for custom properties, but this approach was removed in favor of Graph Connectors which provides better Copilot integration.
 
 ## Authentication Architecture
 
@@ -121,6 +136,7 @@ AUTH_SERVER_PORT=5544
 ### Option B (Application)
 - `ExternalConnection.ReadWrite.OwnedBy` - Manage owned connections
 - `ExternalItem.ReadWrite.OwnedBy` - Manage items in owned connections
+- `PeopleSettings.ReadWrite.All` - Profile source registration and prioritization (beta API)
 
 ## Project Structure
 
@@ -145,8 +161,6 @@ M365-Agent-Provisioning/
 │   │   └── user-property-schema.ts
 │   ├── safety/                   # Security modules
 │   │   └── account-protection.ts   # Real account protection
-│   ├── extensions/               # Graph extensions (experimental)
-│   │   └── open-extension-manager.ts
 │   └── utils/                    # Utilities
 │       └── logger.ts
 │
@@ -197,6 +211,7 @@ M365-Agent-Provisioning/
 | `src/provision.ts` | Main CLI - Option A user provisioning |
 | `src/enrich-profiles.ts` | Main CLI - Option B profile enrichment |
 | `src/update-licenses.ts` | Add missing licenses to existing users |
+| `src/reset-password.ts` | Reset passwords (single user or bulk CSV) |
 | `src/reset-tenant.ts` | Tenant reset with account protection |
 | `src/graph-client.ts` | Microsoft Graph API client (supports multiple licenses) |
 | `src/graph-beta-client.ts` | Graph Beta API client |
@@ -236,6 +251,7 @@ npm run provision:beta         # With beta Graph API
 npm run list-users             # List provisioned users
 npm run list-licenses          # List available licenses (uses delegated auth)
 npm run update-licenses        # Add missing licenses to existing users
+npm run reset-password         # Reset user password (single or bulk CSV)
 npm run cleanup                # Delete provisioned users
 
 # Tenant Management
@@ -412,15 +428,34 @@ node tools/debug/check-connection.mjs
 
 Graph Connectors operate as background services and require OAuth 2.0 Client Credentials Flow with Application Permissions. Delegated permissions (user sign-in) will result in 401 errors.
 
+### Profile Source Registration is Critical
+
+For connector data to appear in user profiles (`/me/profile` API) and profile cards, you must:
+1. Register the connector as a profile source: `POST /admin/people/profileSources`
+2. Add it to prioritized sources: `PATCH /admin/people/profilePropertySettings/{id}`
+
+**Important API details:**
+- Both endpoints are **beta-only** - use the beta Graph client
+- The profile property settings endpoint returns a **collection with `value` array** - you must extract the settings ID to PATCH
+- Requires `PeopleSettings.ReadWrite.All` application permission with admin consent
+
 ### Schema Provisioning Takes Time
 
 After creating a Graph Connector connection, the schema must transition from "draft" to "ready" state. This can take 10+ minutes. Use `npm run enrich-profiles:wait` to poll for readiness.
+
+### Schema Cannot Be Updated
+
+Once a schema is registered on a connection, it cannot be modified. If you need to change the schema, you must delete the connection and recreate it. Handle the "UpdateNotAllowed" error gracefully.
 
 ### Item Indexing Has Latency
 
 After ingesting external items, they may not be immediately searchable. Allow 1-2 hours for full indexing in M365 Search/Copilot.
 
+### Profile Data Propagation Takes Time
+
+After ingestion and profile source registration, data may take 1-24 hours to appear in the `/me/profile` API and profile cards.
+
 ---
 
-**Last Updated**: 2026-01-22
-**Version**: 2.0.0 (OAuth Authorization Code + Client Credentials Flows)
+**Last Updated**: 2026-01-25
+**Version**: 2.2.0 (Profile source registration, languages support)

@@ -70,8 +70,64 @@ export class PeopleItemIngester {
           arrayValue = [value];
         }
 
-        // JSON-serialize each array item for labeled properties
-        if (prop.peopleDataLabel) {
+        // Handle special complex types
+        if (prop.peopleDataLabel === 'personLanguage') {
+          // Languages with proficiency - format: {"displayName":"Norwegian","proficiency":"nativeOrBilingual"}
+          // Supported input formats:
+          //   - JSON: [{"language":"Norwegian","proficiency":"native"}]
+          //   - Colon: ["Norwegian:native"]
+          //   - Parenthetical: ["Italian (Native)", "English (Fluent)"]
+          //   - Plain: ["Norwegian"]
+          properties[prop.name] = arrayValue.map((item: any) => {
+            // Map friendly proficiency names to Microsoft Graph values
+            const mapProficiency = (prof: string): string => {
+              const normalized = prof.toLowerCase().trim();
+              if (normalized.includes('native') || normalized.includes('bilingual')) return 'nativeOrBilingual';
+              if (normalized.includes('fluent') || normalized === 'full' || normalized === 'fullprofessional') return 'fullProfessional';
+              if (normalized.includes('professional') || normalized.includes('working')) return 'professionalWorking';
+              if (normalized.includes('conversational') || normalized.includes('intermediate') || normalized.includes('limited')) return 'limitedWorking';
+              if (normalized.includes('basic') || normalized.includes('beginner') || normalized.includes('elementary')) return 'elementary';
+              return 'professionalWorking'; // default
+            };
+
+            if (typeof item === 'object' && item.language) {
+              // Already parsed object with language/proficiency
+              return JSON.stringify({
+                displayName: item.language,
+                proficiency: mapProficiency(item.proficiency || 'professionalWorking')
+              });
+            } else if (typeof item === 'string') {
+              // Check for parenthetical format: "Italian (Native)"
+              const parenMatch = item.match(/^(.+?)\s*\(([^)]+)\)$/);
+              if (parenMatch) {
+                const [, lang, prof] = parenMatch;
+                return JSON.stringify({
+                  displayName: lang.trim(),
+                  proficiency: mapProficiency(prof)
+                });
+              }
+              // Check for colon format: "Norwegian:native"
+              if (item.includes(':')) {
+                const [lang, prof] = item.split(':').map((s: string) => s.trim());
+                return JSON.stringify({
+                  displayName: lang,
+                  proficiency: mapProficiency(prof)
+                });
+              }
+              // Simple language name without proficiency
+              return JSON.stringify({
+                displayName: String(item).trim(),
+                proficiency: 'professionalWorking'
+              });
+            } else {
+              return JSON.stringify({
+                displayName: String(item),
+                proficiency: 'professionalWorking'
+              });
+            }
+          });
+        } else if (prop.peopleDataLabel) {
+          // Other labeled array properties use: {"displayName":"..."}
           properties[prop.name] = arrayValue.map((item: string) =>
             JSON.stringify({ displayName: item })
           );
@@ -79,12 +135,12 @@ export class PeopleItemIngester {
           // Custom properties without labels can be plain strings
           properties[prop.name] = arrayValue;
         }
+      } else if (prop.peopleDataLabel === 'personNote') {
+        // personAnnotation entity requires: {"detail":"..."}
+        properties[prop.name] = JSON.stringify({ detail: value });
       } else if (prop.peopleDataLabel) {
-        // Properties with official labels need JSON serialization
-        properties[prop.name] = JSON.stringify({
-          displayName: value,
-          detail: { value }
-        });
+        // Other single-value labels (e.g., personWebSite) use: {"displayName":"..."}
+        properties[prop.name] = JSON.stringify({ displayName: value });
       } else {
         // Custom properties without labels (interests, responsibilities, schools)
         properties[prop.name] = value;

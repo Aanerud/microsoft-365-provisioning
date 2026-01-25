@@ -89,6 +89,7 @@ Create an app in [Azure Portal](https://portal.azure.com) → Azure Active Direc
 | `profile` | Delegated | Read user profiles |
 | `ExternalConnection.ReadWrite.OwnedBy` | **Application** | Graph Connector (enrichment) |
 | `ExternalItem.ReadWrite.OwnedBy` | **Application** | Graph Connector items |
+| `PeopleSettings.ReadWrite.All` | **Application** | Profile source registration |
 
 > **Important**: Click "Grant admin consent" after adding permissions!
 
@@ -129,10 +130,10 @@ npm run build
 
 ```bash
 # Preview what will be created (dry run)
-npm run provision -- --dry-run --csv config/agents-template.csv
+npm run provision -- --dry-run --csv config/textcraft-europe.csv
 
 # Actually create users
-npm run provision -- --csv config/agents-template.csv
+npm run provision -- --csv config/textcraft-europe.csv
 ```
 
 ### Advanced: Enrich Profiles with People Data
@@ -145,7 +146,7 @@ npm run enrich-profiles:wait  # Wait for schema to be ready (~10 min)
 
 Then enrich:
 ```bash
-npm run enrich-profiles -- --csv config/agents-template.csv
+npm run enrich-profiles -- --csv config/textcraft-europe.csv
 ```
 
 ### Tenant Reset: Start Fresh
@@ -205,17 +206,18 @@ These become searchable in M365 Copilot:
 | `interests` | "['AI/ML','Hiking']" | Copilot: "Who's interested in AI?" |
 | `aboutMe` | "10 years experience..." | Copilot: "Tell me about Sarah" |
 | `schools` | "['MIT','Stanford']" | Copilot: "Who went to MIT?" |
+| `languages` | "['Italian (Native)','English (Fluent)']" | Copilot: "Who speaks Italian?" |
 
 ### Custom Properties (Your Own Columns)
 
 Any column not in the standard list becomes a custom property:
 
 ```csv
-name,email,role,department,VTeam,CostCenter,SecurityClearance
-Sarah Chen,sarah@domain.com,CEO,Executive,Leadership,C-SUITE,Level-5
+name,email,role,department,VTeam,CostCenter,BuildingAccess,WritingStyle,Specialization
+Sarah Chen,sarah@domain.com,CEO,Executive,Leadership,C-SUITE,Level-5,Strategic,Leadership
 ```
 
-`VTeam`, `CostCenter`, `SecurityClearance` → All searchable in Copilot!
+`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → All searchable in Copilot!
 
 ---
 
@@ -265,9 +267,13 @@ This is a **learning project**. We documented everything we discovered:
 **Key Learnings:**
 
 1. **Delegated vs Application permissions matter** - Graph Connectors only work with Client Credentials Flow
-2. **Schema provisioning is slow** - Wait 10+ minutes after creating a connection
-3. **Items aren't instantly searchable** - Allow 1-2 hours for Copilot indexing
-4. **State management prevents duplicates** - CSV is idempotent; run it as many times as you want
+2. **Profile source registration is critical** - Without it, data won't appear in `/me/profile` API or profile cards
+3. **Profile prioritization requires beta API** - Use `PATCH /admin/people/profilePropertySettings/{id}` (not the collection endpoint)
+4. **Schema provisioning is slow** - Wait 10+ minutes after creating a connection
+5. **Schema cannot be updated** - Once registered, you must delete and recreate the connection to change schema
+6. **Items aren't instantly searchable** - Allow 1-2 hours for Copilot indexing
+7. **Profile data propagation takes time** - Allow 1-24 hours for data to appear in profile API
+8. **State management prevents duplicates** - CSV is idempotent; run it as many times as you want
 
 ---
 

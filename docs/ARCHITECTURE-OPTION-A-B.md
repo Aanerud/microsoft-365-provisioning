@@ -1,6 +1,6 @@
 # Architecture: Option A vs Option B
 
-**Last Updated**: 2026-01-22
+**Last Updated**: 2026-01-25
 
 ## Overview
 
@@ -109,9 +109,10 @@ Enrich user profiles with additional data that surfaces in Microsoft 365 Copilot
 - interests
 - responsibilities
 - schools
+- languages (with proficiency levels)
 
 **Custom Organization Properties**:
-- VTeam, BenefitPlan, CostCenter, BuildingAccess, ProjectCode
+- VTeam, BenefitPlan, CostCenter, BuildingAccess, ProjectCode, WritingStyle, Specialization
 - Any additional CSV columns not in schema
 
 ### Architecture
@@ -119,7 +120,10 @@ Enrich user profiles with additional data that surfaces in Microsoft 365 Copilot
 ```
 Graph Connector (m365provisionpeople)
 ├── Connection (one-time setup)
-├── Schema (16 properties, registered once)
+├── Profile Source Registration (beta API)
+│   ├── POST /admin/people/profileSources (register)
+│   └── PATCH /admin/people/profilePropertySettings/{id} (prioritize)
+├── Schema (18+ properties, registered once)
 └── External Items (one per person)
     ├── id: person-email-domain-com
     ├── accountInformation: links to Entra ID user
@@ -132,12 +136,14 @@ Graph Connector (m365provisionpeople)
 - Application Permissions:
   - ExternalConnection.ReadWrite.OwnedBy
   - ExternalItem.ReadWrite.OwnedBy
+  - PeopleSettings.ReadWrite.All (for profile source registration)
 - Requires client secret in `.env`
 
 ### Operations
 - Uses Microsoft Graph beta endpoint (required for People Data)
 - Creates Graph Connector connection (once)
-- Registers schema with People Data labels (once)
+- Registers as profile source and configures prioritization (beta API)
+- Registers schema with People Data labels (once, cannot be updated)
 - Ingests external items linked to Entra ID users
 - Individual PUT requests per item (100ms delay for rate limiting)
 - Automatic deletion of orphaned items (state-based tracking)
@@ -386,5 +392,5 @@ npm run enrich-profiles    # Creates enrichment data
 ---
 
 **Status**: ✅ Both options implemented and working
-**Last Tested**: 2026-01-22
-**Test Results**: 3/3 users successfully provisioned and enriched
+**Last Tested**: 2026-01-25
+**Test Results**: 95/95 users successfully provisioned and enriched (textcraft-europe.csv)

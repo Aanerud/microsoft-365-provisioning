@@ -243,6 +243,7 @@ export class StateManager {
    * Detect changes between CSV user and Azure AD user
    * Returns array of changed fields (Option A properties only)
    * Option B enrichment data and custom properties are NOT compared
+   * (Custom properties flow through Graph Connectors, not Entra ID)
    */
   private detectChanges(
     csvUser: any,
@@ -253,7 +254,7 @@ export class StateManager {
 
     // Only compare Option A (standard Entra ID) properties
     for (const column of csvColumns) {
-      // Skip non-standard properties
+      // Skip non-standard properties (custom properties flow through Graph Connectors)
       if (!isStandardProperty(column)) {
         continue;
       }
@@ -263,7 +264,7 @@ export class StateManager {
         continue;
       }
 
-      // Skip Option B properties (enrichment data)
+      // Skip Option B properties (enrichment data handled by Graph Connectors)
       if (metadata.handledBy === 'optionB') {
         continue;
       }
@@ -337,7 +338,7 @@ export class StateManager {
   /**
    * Normalize user data from CSV
    * Parses ONLY Option A (standard Entra ID) properties
-   * Option B enrichment data and custom properties are SKIPPED
+   * Option B enrichment data and custom properties flow through Graph Connectors
    */
   private normalizeUserData(csvUser: any, csvColumns: string[]): UserState {
     const userState: UserState = {
@@ -349,12 +350,12 @@ export class StateManager {
     for (const column of csvColumns) {
       const metadata = getPropertyMetadata(column);
 
-      // Skip Option B properties (all enrichment data)
+      // Skip Option B properties (enrichment data - handled by Graph Connectors)
       if (metadata && metadata.handledBy === 'optionB') {
         continue;
       }
 
-      // Skip custom properties (no longer in schema - handled by Option B)
+      // Skip custom properties (flow through Graph Connectors, not Entra ID)
       if (!metadata) {
         continue;
       }
@@ -368,7 +369,6 @@ export class StateManager {
       }
     }
 
-    // NO custom properties extraction - all moved to Option B
     return userState;
   }
 

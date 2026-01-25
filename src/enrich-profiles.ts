@@ -95,6 +95,13 @@ class ProfileEnrichment {
       if (record.certifications) parsed.certifications = parsePropertyValue('certifications', record.certifications);
       if (record.awards) parsed.awards = parsePropertyValue('awards', record.awards);
 
+      // Parse languages with proficiency
+      // Supports formats:
+      // - JSON: [{"language":"Norwegian","proficiency":"native"},{"language":"English","proficiency":"fullProfessional"}]
+      // - Simple: ["Norwegian:native","English:fullProfessional"]
+      // - Plain: ["Norwegian","English"] (defaults to professionalWorking proficiency)
+      if (record.languages) parsed.languages = parsePropertyValue('languages', record.languages);
+
       return parsed;
     });
   }
@@ -162,6 +169,15 @@ class ProfileEnrichment {
         await this.connectionManager.createConnection(
           'M365 Provision People Data',
           'People data enrichment from M365-Agent-Provisioning'
+        );
+
+        // Register as profile source to fix "unknownFutureValue" label issue
+        // This requires PeopleSettings.ReadWrite.All application permission
+        const userDomain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
+        const webUrl = `https://${userDomain.replace('.onmicrosoft.com', '.sharepoint.com')}`;
+        await this.connectionManager.registerAsProfileSource(
+          'M365 Agent Provisioning',
+          webUrl
         );
       }
 

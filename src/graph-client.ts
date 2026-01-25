@@ -545,6 +545,8 @@ export class GraphClient {
     // Preferences
     usageLocation?: string;
     preferredLanguage?: string;
+    // Allow any other properties
+    [key: string]: any;
   }>): Promise<{
     successful: User[];
     failed: Array<{ user: any; error: string }>;

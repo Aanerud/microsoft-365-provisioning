@@ -1,6 +1,6 @@
 # Option B: Profile Enrichment via Microsoft Graph Connectors
 
-**Status**: ✅ Implemented and Working (2026-01-22)
+**Status**: ✅ Implemented and Working (2026-01-25)
 
 ## Overview
 
@@ -10,6 +10,8 @@ Option B enriches Microsoft 365 user profiles by ingesting additional data throu
 - Microsoft Search
 - Microsoft 365 Copilot responses
 - Teams member discovery
+
+> **Note**: Profile data propagation to the `/me/profile` API can take 1-24 hours after ingestion.
 
 ## Architecture
 
@@ -74,6 +76,7 @@ Handled by `enrich-profiles.ts` - stored in Graph Connector:
 - `interests`
 - `responsibilities`
 - `schools`
+- `languages` (with proficiency levels, e.g., "Italian (Native)", "English (Fluent)")
 
 **Custom Organization Properties** (searchable):
 - `VTeam`
@@ -81,6 +84,8 @@ Handled by `enrich-profiles.ts` - stored in Graph Connector:
 - `CostCenter`
 - `BuildingAccess`
 - `ProjectCode`
+- `WritingStyle`
+- `Specialization`
 - *(Any additional columns in CSV not in schema)*
 
 ## Prerequisites
@@ -91,10 +96,10 @@ Users must exist in Entra ID before enriching their profiles. Option B links ext
 
 ```bash
 # First: Create users
-npm run provision -- --csv config/agents-template.csv
+npm run provision -- --csv config/textcraft-europe.csv
 
 # Then: Enrich profiles
-npm run enrich-profiles -- --csv config/agents-template.csv
+npm run enrich-profiles -- --csv config/textcraft-europe.csv
 ```
 
 ### 2. Azure AD Configuration
@@ -102,8 +107,9 @@ npm run enrich-profiles -- --csv config/agents-template.csv
 **App Registration Requirements**:
 
 **Application Permissions** (required):
-- `ExternalConnection.ReadWrite.OwnedBy`
-- `ExternalItem.ReadWrite.OwnedBy`
+- `ExternalConnection.ReadWrite.OwnedBy` - Create/manage Graph Connector connections
+- `ExternalItem.ReadWrite.OwnedBy` - Create/manage external items
+- `PeopleSettings.ReadWrite.All` - Register profile source and configure prioritization (beta API)
 
 **Admin Consent**: Required (Global Admin or delegated admin)
 
@@ -137,37 +143,48 @@ npm run enrich-profiles:setup
 
 **What this does**:
 1. Creates Graph Connector connection (`m365provisionpeople`)
-2. Registers schema with 16 properties:
+2. **Registers as profile source** (beta API: `/admin/people/profileSources`)
+   - Links the connector to People Data in M365
+   - Required for data to appear in user profiles
+3. **Adds to prioritized profile sources** (beta API: `/admin/people/profilePropertySettings`)
+   - Sets connector as highest priority (index 0)
+   - Ensures connector data takes precedence over other sources
+4. Registers schema with 18+ properties:
    - 1 required: `accountInformation` (links to Entra ID user)
    - 7 with official People Data labels
-   - 8 custom searchable properties
-3. Waits for schema to be ready (can take 5-10 minutes)
+   - 10+ custom searchable properties
+5. Waits for schema to be ready (can take 5-10 minutes)
 
 **Output**:
 ```
 ✓ Created connection: m365provisionpeople
+📋 Registering connection as profile source (beta API)...
+✓ Registered as profile source
+✓ Added to prioritized profile sources (highest priority)
 ✓ Schema registration initiated
-  Schema state: draft, waiting...
   Schema state: draft, waiting...
   Schema state: ready
 ✓ Schema is ready
 ```
+
+> **Important**: Profile source registration requires the `PeopleSettings.ReadWrite.All` application permission. Without this, data will be ingested but may not appear in the `/me/profile` API or profile cards.
 
 ### Step 2: Ingest People Data
 
 Ingest enrichment data from your CSV file:
 
 ```bash
-npm run enrich-profiles -- --csv config/agents-template.csv
+npm run enrich-profiles -- --csv config/textcraft-europe.csv
 ```
 
 **What this does**:
 1. Authenticates with OAuth 2.0 Client Credentials Flow
-2. Loads CSV and parses enrichment properties
-3. Creates external items for each person
-4. Ingests items to Graph Connector (using beta endpoint)
-5. Links items to Entra ID users via email address
-6. Automatically detects and deletes orphaned items (items not in CSV)
+2. Verifies profile source registration and prioritization
+3. Loads CSV and parses enrichment properties
+4. Creates external items for each person
+5. Ingests items to Graph Connector (using beta endpoint)
+6. Links items to Entra ID users via email address
+7. Automatically detects and deletes orphaned items (items not in CSV)
 
 **Output**:
 ```
@@ -262,7 +279,7 @@ Each person is converted to an external item with this structure:
 
 ## Schema Details
 
-The schema includes 16 properties:
+The schema includes 18+ properties:
 
 | Property | Type | Label | Category |
 |----------|------|-------|----------|
@@ -277,13 +294,22 @@ The schema includes 16 properties:
 | interests | stringCollection | *(none)* | Custom searchable |
 | responsibilities | stringCollection | *(none)* | Custom searchable |
 | schools | stringCollection | *(none)* | Custom searchable |
+| languages | stringCollection | *(none)* | Custom searchable (with proficiency) |
 | VTeam | string | *(none)* | Custom organization property |
 | BenefitPlan | string | *(none)* | Custom organization property |
 | CostCenter | string | *(none)* | Custom organization property |
 | BuildingAccess | string | *(none)* | Custom organization property |
 | ProjectCode | string | *(none)* | Custom organization property |
+| WritingStyle | string | *(none)* | Custom organization property |
+| Specialization | string | *(none)* | Custom organization property |
 
 **Dynamic Schema**: If your CSV contains additional columns not in the standard schema, they're automatically added as custom searchable properties.
+
+**Languages Format**: Languages support proficiency levels in parenthetical format:
+```csv
+languages,"['Italian (Native)','English (Fluent)','French (Professional)']"
+```
+Proficiency levels: Native, Fluent, Professional, Conversational, Basic
 
 ## Authentication Flow
 
@@ -453,6 +479,35 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 2. Verify items exist: `node verify-items.mjs`
 3. Check Microsoft Search admin center for indexing status
 
+### Profile Data Not Appearing in /me/profile API
+
+**Symptom**: Items ingested but `/me/profile` shows empty skills, notes, languages
+
+**Cause**: Profile source not registered or not in prioritized sources
+
+**Solution**:
+1. Verify `PeopleSettings.ReadWrite.All` permission is granted with admin consent
+2. Run `npm run enrich-profiles:setup` to re-register profile source
+3. Check output for "✓ Registered as profile source" and "✓ Added to prioritized profile sources"
+4. Allow 1-24 hours for profile data propagation
+
+**Technical Details**:
+- Profile source registration uses beta API: `POST /admin/people/profileSources`
+- Prioritization uses: `PATCH /admin/people/profilePropertySettings/{id}`
+- The API returns a collection with `value` array - must extract settings ID to PATCH
+
+### Profile Source Registration Failed
+
+**Symptom**: "Resource not found for the segment 'profileSources'"
+
+**Cause**: Using v1.0 API instead of beta, or missing permission
+
+**Solution**:
+1. Ensure using beta endpoint (code handles this automatically)
+2. Verify `PeopleSettings.ReadWrite.All` application permission
+3. Grant admin consent in Azure Portal
+4. People data connectors are in preview - tenant may need opt-in
+
 ### CSV Parsing Errors
 
 **Symptom**: "Cannot parse array value" or similar
@@ -613,6 +668,7 @@ npm run enrich-profiles:setup
 
 ---
 
-**Last Updated**: 2026-01-22
+**Last Updated**: 2026-01-25
 **Status**: ✅ Production Ready
 **Authentication**: OAuth 2.0 Client Credentials Flow
+**Sample Data**: `config/textcraft-europe.csv` (95 users)

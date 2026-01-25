@@ -8,7 +8,11 @@ import { ConfigExporter, type AgentConfig } from './export.js';
 import { BrowserAuthServer } from './auth/browser-auth-server.js';
 import { StateManager } from './state-manager.js';
 import { initializeLogger } from './utils/logger.js';
-import { getOptionBProperties, getCustomProperties } from './schema/user-property-schema.js';
+import {
+  getOptionBProperties,
+  getCustomProperties,
+} from './schema/user-property-schema.js';
+import { ProfileWriter } from './profile-writer.js';
 
 dotenv.config();
 
@@ -343,6 +347,42 @@ class AgentProvisioner {
         logger.info(`Assigned ${assignedManagers.length} manager relationships`);
       }
 
+      // Write Profile API data (languages) using delegated auth
+      // This requires the current user's access token
+      const hasLanguages = csvColumns.includes('languages') && agents.some(a => (a as any).languages);
+
+      if (hasLanguages) {
+        console.log(`  Writing language proficiencies via Profile API...`);
+
+        // Get the access token from the current session
+        const authServer = new BrowserAuthServer({
+          tenantId: process.env.AZURE_TENANT_ID!,
+          clientId: process.env.AZURE_CLIENT_ID!,
+        });
+        const authResult = await authServer.authenticate();
+        const profileWriter = new ProfileWriter(authResult.accessToken);
+
+        for (const user of successful) {
+          const csvUser = agents.find(a => a.email === user.userPrincipalName);
+          const languagesValue = (csvUser as any)?.languages;
+
+          if (languagesValue) {
+            const languages = ProfileWriter.parseLanguages(languagesValue);
+            if (languages.length > 0) {
+              console.log(`  Writing ${languages.length} language(s) for ${user.displayName}...`);
+              const result = await profileWriter.writeLanguages(user.id, languages);
+
+              if (result.failed > 0) {
+                logger.warn(`Failed to write ${result.failed} languages for ${user.displayName}`, {
+                  userId: user.id,
+                  errors: result.errors,
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Track for export
       for (const user of successful) {
         const agent = usersToCreate.find(a => a.email === user.userPrincipalName);
@@ -377,15 +417,17 @@ class AgentProvisioner {
         const userId = action.azureAdUser.id;
 
         // Only handle standard property changes (Option A)
-        // Custom properties and enrichment data are handled by Option B
+        // Custom properties and enrichment data are handled by Option B (Graph Connectors)
         const standardChanges = action.changes?.filter(c => !c.isCustomProperty) || [];
 
         // Prepare standard property updates
         if (standardChanges.length > 0) {
           const updates: Record<string, any> = {};
+
           for (const change of standardChanges) {
             updates[change.field] = change.newValue;
           }
+
           standardUpdates.push({ userId, updates });
         }
       }
@@ -450,6 +492,43 @@ class AgentProvisioner {
         }
 
         logger.info(`Updated ${assignedManagers.length} manager relationships`);
+      }
+
+      // Update Profile API data (languages) for updated users
+      const hasLanguagesUpdate = csvColumns.includes('languages') && agents.some(a => (a as any).languages);
+
+      if (hasLanguagesUpdate) {
+        console.log(`  Updating language proficiencies via Profile API...`);
+
+        // Get the access token from the current session
+        const authServer = new BrowserAuthServer({
+          tenantId: process.env.AZURE_TENANT_ID!,
+          clientId: process.env.AZURE_CLIENT_ID!,
+        });
+        const authResult = await authServer.authenticate();
+        const profileWriter = new ProfileWriter(authResult.accessToken);
+
+        for (const action of delta.update) {
+          const userId = action.azureAdUser.id;
+          const email = action.user.email;
+          const csvUser = agents.find(a => a.email === email);
+          const languagesValue = (csvUser as any)?.languages;
+
+          if (languagesValue) {
+            const languages = ProfileWriter.parseLanguages(languagesValue);
+            if (languages.length > 0) {
+              console.log(`  Updating ${languages.length} language(s) for ${action.user.displayName}...`);
+              const result = await profileWriter.writeLanguages(userId, languages);
+
+              if (result.failed > 0) {
+                logger.warn(`Failed to update ${result.failed} languages for ${action.user.displayName}`, {
+                  userId,
+                  errors: result.errors,
+                });
+              }
+            }
+          }
+        }
       }
     }
 
