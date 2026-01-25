@@ -4,6 +4,12 @@ import { Logger } from '../utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
 
+// Retry configuration (based on cocogen best practices)
+const MAX_RETRIES = 6;
+const BASE_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30000;
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
 export interface PeopleItem {
   email: string;
   [key: string]: any;
@@ -187,7 +193,7 @@ export class PeopleItemIngester {
   }
 
   /**
-   * Batch ingest items (20 per batch)
+   * Batch ingest items with retry logic (based on cocogen best practices)
    * Note: Using individual requests instead of batch due to auth token issues with $batch
    */
   async batchIngestItems(items: any[]): Promise<{
@@ -200,15 +206,12 @@ export class PeopleItemIngester {
     // Process items individually using beta endpoint for People Data
     for (const item of items) {
       try {
-        await this.betaClient
-          .api(`/external/connections/${this.connectionId}/items/${item.id}`)
-          .put(item);
-
+        await this.putItemWithRetry(item);
         successful.push(item.id);
         this.logger.success(`Ingested: ${item.id}`);
 
         // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
 
       } catch (error: any) {
         const errorMsg = error.message || error.code || 'Unknown error';
@@ -222,6 +225,89 @@ export class PeopleItemIngester {
     }
 
     return { successful, failed };
+  }
+
+  /**
+   * PUT item with exponential backoff retry (based on cocogen pattern)
+   * Retries on 429, 500, 502, 503, 504 up to MAX_RETRIES times
+   */
+  private async putItemWithRetry(item: any): Promise<void> {
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await this.betaClient
+          .api(`/external/connections/${this.connectionId}/items/${item.id}`)
+          .put(item);
+        return; // Success!
+
+      } catch (error: any) {
+        lastError = error;
+        const statusCode = error.statusCode || error.code;
+
+        // Check if this is a retryable error
+        if (!this.shouldRetry(statusCode) || attempt === MAX_RETRIES) {
+          throw error; // Non-retryable or max retries reached
+        }
+
+        // Parse Retry-After header if present
+        const retryAfterMs = this.parseRetryAfter(error.headers);
+        const delay = this.computeDelay(attempt, retryAfterMs);
+
+        this.logger.warn(`Throttled (${statusCode}) for ${item.id}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Check if status code is retryable
+   */
+  private shouldRetry(statusCode: number | string): boolean {
+    const code = typeof statusCode === 'string' ? parseInt(statusCode, 10) : statusCode;
+    return RETRYABLE_STATUS_CODES.has(code);
+  }
+
+  /**
+   * Parse Retry-After header value (seconds or HTTP date)
+   */
+  private parseRetryAfter(headers: any): number | null {
+    if (!headers) return null;
+    const value = headers['retry-after'] || headers['Retry-After'];
+    if (!value) return null;
+
+    const seconds = Number(value);
+    if (!Number.isNaN(seconds) && Number.isFinite(seconds)) {
+      return Math.max(0, seconds * 1000);
+    }
+
+    const dateMs = Date.parse(value);
+    if (!Number.isNaN(dateMs)) {
+      return Math.max(0, dateMs - Date.now());
+    }
+
+    return null;
+  }
+
+  /**
+   * Compute delay with exponential backoff + jitter (cocogen pattern)
+   */
+  private computeDelay(attempt: number, retryAfter: number | null): number {
+    if (retryAfter !== null) {
+      return Math.min(retryAfter, MAX_DELAY_MS);
+    }
+    const exp = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * Math.pow(2, attempt));
+    const jitter = Math.floor(Math.random() * 250);
+    return Math.min(MAX_DELAY_MS, exp + jitter);
+  }
+
+  /**
+   * Sleep helper
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

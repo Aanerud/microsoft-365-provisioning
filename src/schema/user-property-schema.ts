@@ -97,6 +97,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A freeform text entry field for the user to describe themselves',
     handledBy: 'optionB',
     peopleDataLabel: 'personNote',
+    profileApiEndpoint: '/profile/notes',
   },
   {
     name: 'accountEnabled',
@@ -401,6 +402,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'The birthday of the user',
     handledBy: 'optionB',
     peopleDataLabel: 'personAnniversaries',
+    profileApiEndpoint: '/profile/anniversaries',
   },
   {
     name: 'interests',
@@ -411,6 +413,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list for the user to describe their interests',
     handledBy: 'optionB',
     peopleDataLabel: null,
+    profileApiEndpoint: '/profile/interests',
   },
   {
     name: 'skills',
@@ -421,6 +424,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list for the user to enumerate their skills',
     handledBy: 'optionB',
     peopleDataLabel: 'personSkills',
+    profileApiEndpoint: '/profile/skills',
   },
   {
     name: 'schools',
@@ -431,6 +435,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list of schools that the user has attended',
     handledBy: 'optionB',
     peopleDataLabel: null,
+    profileApiEndpoint: '/profile/educationalActivities',
   },
   {
     name: 'pastProjects',
@@ -441,6 +446,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list for the user to enumerate their past projects',
     handledBy: 'optionB',
     peopleDataLabel: 'personProjects',
+    profileApiEndpoint: '/profile/projects',
   },
   {
     name: 'responsibilities',
@@ -451,6 +457,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list for the user to enumerate their responsibilities',
     handledBy: 'optionB',
     peopleDataLabel: null,
+    profileApiEndpoint: '/profile/responsibilities',
   },
   {
     name: 'mySite',
@@ -461,6 +468,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'The URL for the user personal site',
     handledBy: 'optionB',
     peopleDataLabel: 'personWebSite',
+    profileApiEndpoint: '/profile/websites',
   },
   {
     name: 'certifications',
@@ -471,6 +479,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list of certifications held by the user',
     handledBy: 'optionB',
     peopleDataLabel: 'personCertifications',
+    profileApiEndpoint: '/profile/certifications',
   },
   {
     name: 'awards',
@@ -481,6 +490,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     description: 'A list of awards received by the user',
     handledBy: 'optionB',
     peopleDataLabel: 'personAwards',
+    profileApiEndpoint: '/profile/awards',
   },
   {
     name: 'languages',
@@ -491,7 +501,8 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     betaOnly: false,
     description: 'Languages the user speaks with proficiency levels. Format: [{"language":"Norwegian","proficiency":"native"}]. Proficiency values: elementary, limitedWorking, professionalWorking, fullProfessional, nativeOrBilingual',
     handledBy: 'optionB',
-    peopleDataLabel: null, // Note: personLanguage not yet supported by Graph Connectors
+    peopleDataLabel: null,
+    profileApiEndpoint: '/profile/languages',
   },
 
   // ===== SECURITY =====

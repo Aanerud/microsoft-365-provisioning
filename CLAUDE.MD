@@ -2,107 +2,105 @@
 
 ## Project Overview
 
-**M365-Agent-Provisioning** is a TypeScript CLI tool for bulk provisioning Microsoft 365 users with automatic license assignment and profile enrichment via Microsoft Graph Connectors.
+**M365-Agent-Provisioning** is a TypeScript CLI tool for bulk provisioning Microsoft 365 users with automatic license assignment and profile enrichment.
 
 ### Key Capabilities
 
 - **Option A - User Provisioning**: Create M365 users with standard properties
-- **Option B - Profile Enrichment**: Add extended "People Data" via Graph Connectors
+- **Profile API Enrichment**: Write skills, languages, notes, interests directly to user profiles
+- **Graph Connectors**: Add custom organizational properties (VTeam, CostCenter, etc.)
 - **License Management**: Automatically assign Microsoft 365 licenses
 - **State Management**: CREATE/UPDATE/NOOP detection to avoid duplicate operations
-- **Configuration Export**: Output user details to JSON for downstream consumption
 
 ## Architecture
 
-### Two Complementary Options
+### Hybrid Enrichment Approach
+
+The tool uses a **hybrid approach** for profile enrichment, using the optimal method for each data type:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  OPTION A: User Provisioning                                    │
-│  - Creates Entra ID user accounts                               │
-│  - Sets standard properties (name, email, jobTitle, etc.)       │
-│  - Assigns M365 licenses                                        │
-│  - Auth: OAuth 2.0 Authorization Code Flow (browser-based)      │
-└────────────────┬────────────────────────────────────────────────┘
-                 │
-                 │ Delegated Permissions (User.ReadWrite.All)
-                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Microsoft Graph API v1.0 + Beta                                │
-│  POST /users, PATCH /users/{id}, POST /users/{id}/assignLicense │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  OPTION B: Profile Enrichment                                   │
-│  - Creates Graph Connector connection                           │
-│  - Registers as profile source (beta API)                       │
-│  - Configures profile source prioritization                     │
-│  - Ingests "People Data" (skills, languages, aboutMe, etc.)     │
-│  - Data searchable in M365 Copilot                              │
-│  - Auth: OAuth 2.0 Client Credentials Flow (app-only)           │
-└────────────────┬────────────────────────────────────────────────┘
-                 │
-                 │ Application Permissions (ExternalItem.ReadWrite.OwnedBy,
-                 │                          PeopleSettings.ReadWrite.All)
-                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Microsoft Graph Connectors API (Beta)                          │
-│  POST /external/connections, PUT /external/connections/{id}/items/{id} │
-│  POST /admin/people/profileSources (register profile source)    │
-│  PATCH /admin/people/profilePropertySettings/{id} (prioritize)  │
-└─────────────────────────────────────────────────────────────────┘
+CSV Data
+    │
+    ├─► Option A: User Provisioning
+    │   - Creates Entra ID accounts
+    │   - Sets standard properties (name, email, jobTitle, etc.)
+    │   - Assigns M365 licenses
+    │   - Auth: Delegated (browser login)
+    │   - API: POST /users, PATCH /users/{id}
+    │
+    ├─► Profile API (Direct POST)
+    │   - skills → POST /users/{id}/profile/skills
+    │   - languages → POST /users/{id}/profile/languages
+    │   - aboutMe → POST /users/{id}/profile/notes
+    │   - interests → POST /users/{id}/profile/interests
+    │   - certifications, awards, projects, etc.
+    │   - Auth: Delegated (browser login)
+    │   - API: POST /users/{id}/profile/{collection}
+    │
+    └─► Graph Connectors (Custom Properties)
+        - VTeam, CostCenter, BenefitPlan, BuildingAccess, etc.
+        - Any custom organizational property
+        - Auth: Application (client secret)
+        - API: PUT /external/connections/{id}/items/{id}
 ```
 
-### Why Two Options?
+### Why Hybrid?
 
-| Aspect | Option A | Option B |
-|--------|----------|----------|
-| **Purpose** | Identity management | Data enrichment |
-| **API** | Entra ID (User management) | Graph Connectors (External data) |
-| **Auth** | Delegated (user signs in) | Application (client secret) |
-| **Data Stored** | Entra ID directory | Graph Connector index |
-| **Searchable In** | GAL, Teams, etc. | M365 Copilot, Search |
-| **Custom Properties** | N/A | VTeam, CostCenter, languages, etc. |
+| Data Type | Method | Why |
+|-----------|--------|-----|
+| **Standard User Fields** | Option A (Entra ID) | Native identity management |
+| **Profile Fields** (skills, languages, notes) | Profile API | Direct POST, reliable, no connector overhead |
+| **Custom Org Fields** (VTeam, CostCenter) | Graph Connectors | Only way to add custom searchable properties |
 
-### Custom Properties
+### Profile API Collections (20 Total)
 
-All custom organization properties (VTeam, BenefitPlan, CostCenter, languages, etc.) flow through **Option B (Graph Connectors)**. They are:
-- Stored in the Graph Connector index
-- Searchable via M365 Copilot ("Who speaks French?", "Find people on VTeam Alpha")
-- Displayed as profile notes during preview
+These can be written directly via `POST /users/{id}/profile/{collection}`:
 
-**Note**: We previously used Entra ID extension attributes (`onPremisesExtensionAttributes`) for custom properties, but this approach was removed in favor of Graph Connectors which provides better Copilot integration.
+| Collection | Endpoint | Example Data |
+|------------|----------|--------------|
+| `skills` | `/profile/skills` | "TypeScript", "Project Management" |
+| `languages` | `/profile/languages` | "French (Native)", "English (Fluent)" |
+| `notes` | `/profile/notes` | About Me text |
+| `interests` | `/profile/interests` | "Machine Learning", "Photography" |
+| `certifications` | `/profile/certifications` | "AWS Solutions Architect" |
+| `awards` | `/profile/awards` | "Employee of the Year" |
+| `positions` | `/profile/positions` | Work history |
+| `projects` | `/profile/projects` | Project participation |
+| `educationalActivities` | `/profile/educationalActivities` | University degrees |
+| `patents` | `/profile/patents` | Patents held |
+| `publications` | `/profile/publications` | Books, articles |
+| `responsibilities` | `/profile/responsibilities` | Job duties |
+| `addresses` | `/profile/addresses` | Physical addresses |
+| `phones` | `/profile/phones` | Phone numbers |
+| `emails` | `/profile/emails` | Email addresses |
+| `websites` | `/profile/websites` | Personal websites |
+| `webAccounts` | `/profile/webAccounts` | LinkedIn, GitHub |
+| `anniversaries` | `/profile/anniversaries` | Birthday, work anniversary |
+| `names` | `/profile/names` | Name variations |
+| `accounts` | `/profile/accounts` | Account information |
 
-## Authentication Architecture
+**Note**: Profile API is beta-only and requires delegated authentication.
 
-### Option A: Authorization Code Flow (Browser-Based)
+## Authentication
+
+### Delegated Auth (Browser Login)
+Used for: Option A (provisioning) and Profile API (enrichment)
 
 ```
-1. User runs: npm run provision
-2. CLI starts local HTTP server on port 5544
-3. Browser opens Azure AD login page
-4. User authenticates with admin account
-5. Azure AD redirects to localhost with auth code
-6. CLI exchanges code for tokens
-7. Tokens cached in ~/.m365-provision/token-cache.json
+1. CLI starts local HTTP server on port 5544
+2. Browser opens Azure AD login page
+3. User authenticates with admin account
+4. Tokens cached in ~/.m365-provision/token-cache.json
 ```
 
-**Key Files:**
-- `src/auth/browser-auth-server.ts` - OAuth callback server
-- `src/auth/token-cache.ts` - Token persistence
-
-### Option B: Client Credentials Flow (App-Only)
+### Application Auth (Client Secret)
+Used for: Graph Connectors (custom properties)
 
 ```
 1. CLI reads AZURE_CLIENT_SECRET from .env
 2. Uses @azure/identity ClientSecretCredential
-3. Requests token with .default scope
-4. Token used directly (no caching needed for app-only)
+3. Token used for connector operations
 ```
-
-**Key Files:**
-- `src/enrich-profiles.ts` - Main entry point
-- `src/people-connector/item-ingester.ts` - Token usage
 
 ## Environment Variables
 
@@ -110,230 +108,93 @@ All custom organization properties (VTeam, BenefitPlan, CostCenter, languages, e
 # Azure AD Configuration
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
-AZURE_CLIENT_SECRET=your-client-secret  # Required for Option B
-
-# Graph API Configuration
-GRAPH_API_ENDPOINT=https://graph.microsoft.com
-USE_BETA_ENDPOINTS=true
+AZURE_CLIENT_SECRET=your-client-secret  # Required for Graph Connectors
 
 # Provisioning Configuration
-# Multiple licenses supported (comma-separated)
 LICENSE_SKU_IDS=sku-id-1,sku-id-2
 USER_DOMAIN=yourdomain.onmicrosoft.com
 
-# Auth Server (Option A)
+# Auth Server
 AUTH_SERVER_PORT=5544
 ```
 
 ## Azure AD Permissions
 
-### Option A (Delegated)
-- `User.ReadWrite.All` - Create and manage users
+### Delegated Permissions (Profile API + Option A)
+- `User.ReadWrite.All` - Create users and write to profiles
+- `People.Read.All` - Read profile data
 - `Directory.ReadWrite.All` - Full directory access
-- `Organization.Read.All` - Read organization details
 - `offline_access` - Refresh tokens
 
-### Option B (Application)
+### Application Permissions (Graph Connectors)
 - `ExternalConnection.ReadWrite.OwnedBy` - Manage owned connections
 - `ExternalItem.ReadWrite.OwnedBy` - Manage items in owned connections
-- `PeopleSettings.ReadWrite.All` - Profile source registration and prioritization (beta API)
+- `PeopleSettings.ReadWrite.All` - Profile source registration
+
+## npm Scripts
+
+### Hybrid Enrichment (Recommended)
+```bash
+npm run enrich              # Run both Profile API and Graph Connectors
+npm run enrich:setup        # Setup Graph Connector + run enrichment
+npm run enrich:dry-run      # Preview without making changes
+npm run enrich:profile-api-only  # Only Profile API (skills, languages, etc.)
+npm run enrich:connector-only    # Only Graph Connectors (custom properties)
+```
+
+### User Provisioning (Option A)
+```bash
+npm run provision           # Create users from CSV
+npm run provision:beta      # Use beta Graph API
+npm run list-users          # List provisioned users
+npm run update-licenses     # Add missing licenses
+```
+
+### Utilities
+```bash
+npm run logout              # Clear cached tokens
+npm run test-connection     # Test Graph API
+npm run reset-tenant        # Preview tenant reset
+npm run reset-tenant:confirm # Delete all non-admin users
+```
 
 ## Project Structure
 
 ```
 M365-Agent-Provisioning/
-├── src/                          # TypeScript source code
-│   ├── provision.ts              # Main CLI - Option A user provisioning
-│   ├── enrich-profiles.ts        # Main CLI - Option B profile enrichment
-│   ├── graph-client.ts           # Microsoft Graph API client
-│   ├── graph-beta-client.ts      # Graph Beta API client
-│   ├── state-manager.ts          # State tracking (CREATE/UPDATE/NOOP)
-│   ├── export.ts                 # JSON configuration export
-│   ├── wait-for-schema.ts        # Schema readiness checker
-│   ├── auth/                     # Authentication modules
-│   │   ├── browser-auth-server.ts  # OAuth callback server
-│   │   └── token-cache.ts          # Token persistence
-│   ├── people-connector/         # Graph Connector modules (Option B)
-│   │   ├── connection-manager.ts   # Connection lifecycle
-│   │   ├── schema-builder.ts       # Schema definition
-│   │   └── item-ingester.ts        # External item creation
-│   ├── schema/                   # Property schema definitions
-│   │   └── user-property-schema.ts
-│   ├── safety/                   # Security modules
-│   │   └── account-protection.ts   # Real account protection
-│   └── utils/                    # Utilities
-│       └── logger.ts
-│
-├── config/                       # Configuration files
-│   ├── agents-template.csv       # Main agent definitions
-│   └── agents-test-*.csv         # Test configurations
-│
-├── output/                       # Generated output (gitignored)
-│   ├── agents-config.json        # Provisioned user details
-│   └── provisioning-report.md    # Provisioning summary
-│
-├── state/                        # State tracking (gitignored)
-│   └── external-items-state.json # Graph Connector item state
-│
-├── logs/                         # Log files (gitignored)
-│
-├── tools/                        # Utility scripts
-│   ├── debug/                    # Debug and testing scripts
-│   │   ├── check-app-permissions.mjs
-│   │   ├── check-connection.mjs
-│   │   ├── test-*.mjs
-│   │   └── verify-*.mjs
-│   └── admin/                    # Administrative scripts
-│       ├── cleanup-orphaned-items.mjs
-│       └── delete-connection.mjs
-│
-├── public/                       # Static files
-│   └── auth.html                 # OAuth callback page
-│
-├── docs/                         # Documentation
-│   ├── README.md                 # Documentation index
-│   ├── SETUP.md                  # Setup guide
-│   ├── USAGE.md                  # Usage guide
-│   └── *.md                      # Additional guides
-│
-├── dist/                         # Compiled JavaScript (generated)
-├── .env                          # Environment variables (gitignored)
-├── .env.example                  # Environment template
-└── package.json                  # Dependencies and scripts
+├── src/
+│   ├── provision.ts              # Option A - User provisioning
+│   ├── enrich-profiles-hybrid.ts # Hybrid enrichment (Profile API + Connectors)
+│   ├── enrich-profiles-direct.ts # Profile API only
+│   ├── enrich-profiles.ts        # Graph Connectors only
+│   ├── profile-writer.ts         # Profile API writer class
+│   ├── graph-client.ts           # Microsoft Graph client
+│   ├── auth/
+│   │   ├── browser-auth-server.ts
+│   │   └── token-cache.ts
+│   ├── people-connector/
+│   │   ├── connection-manager.ts
+│   │   ├── schema-builder.ts
+│   │   └── item-ingester.ts
+│   └── schema/
+│       └── user-property-schema.ts
+├── config/
+│   └── textcraft-europe.csv      # Sample data
+├── tools/
+│   ├── debug/                    # Debug scripts
+│   └── admin/                    # Admin utilities
+└── docs/                         # Documentation
 ```
 
-## Critical Files
-
-### Core Modules
+## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/provision.ts` | Main CLI - Option A user provisioning |
-| `src/enrich-profiles.ts` | Main CLI - Option B profile enrichment |
-| `src/update-licenses.ts` | Add missing licenses to existing users |
-| `src/reset-password.ts` | Reset passwords (single user or bulk CSV) |
-| `src/reset-tenant.ts` | Tenant reset with account protection |
-| `src/graph-client.ts` | Microsoft Graph API client (supports multiple licenses) |
-| `src/graph-beta-client.ts` | Graph Beta API client |
-| `src/state-manager.ts` | State tracking (CREATE/UPDATE/NOOP) |
-| `src/export.ts` | JSON configuration export |
-
-### Authentication
-
-| File | Purpose |
-|------|---------|
-| `src/auth/browser-auth-server.ts` | OAuth callback server for Option A |
-| `src/auth/token-cache.ts` | Token persistence |
-
-### Graph Connector (Option B)
-
-| File | Purpose |
-|------|---------|
-| `src/people-connector/connection-manager.ts` | Connection lifecycle |
-| `src/people-connector/schema-builder.ts` | Schema definition |
-| `src/people-connector/item-ingester.ts` | External item creation |
-
-### Supporting Modules
-
-| File | Purpose |
-|------|---------|
-| `src/schema/user-property-schema.ts` | Property definitions |
-| `src/safety/account-protection.ts` | Real account protection |
-| `src/utils/logger.ts` | Logging utility |
-| `src/wait-for-schema.ts` | Schema readiness checker |
-
-## npm Scripts
-
-```bash
-# Option A - User Provisioning
-npm run provision              # Standard provisioning
-npm run provision:beta         # With beta Graph API
-npm run list-users             # List provisioned users
-npm run list-licenses          # List available licenses (uses delegated auth)
-npm run update-licenses        # Add missing licenses to existing users
-npm run reset-password         # Reset user password (single or bulk CSV)
-npm run cleanup                # Delete provisioned users
-
-# Tenant Management
-npm run reset-tenant           # Preview users to delete (dry run)
-npm run reset-tenant:confirm   # Delete all non-admin users
-
-# Option B - Profile Enrichment
-npm run enrich-profiles:setup  # Setup Graph Connector
-npm run enrich-profiles        # Enrich profiles from CSV
-npm run enrich-profiles:dry-run # Preview without changes
-npm run enrich-profiles:wait   # Wait for schema ready
-
-# Authentication
-npm run logout                 # Clear cached tokens
-npm run test-connection        # Test Graph API (uses delegated auth)
-npm run test-beta              # Test Beta API
-
-# Development
-npm run build                  # Compile TypeScript
-npm run dev                    # Watch mode
-npm run clean                  # Remove dist/
-```
-
-## State Management
-
-The tool uses state files to track what has been provisioned:
-
-- **Option A State**: Tracked via Graph API (check if user exists)
-- **Option B State**: `state/external-items-state.json`
-
-### State Actions
-
-| Action | When |
-|--------|------|
-| CREATE | Item doesn't exist |
-| UPDATE | Item exists but data changed |
-| NOOP | Item exists with same data |
-
-## Output Files
-
-| File | Purpose |
-|------|---------|
-| `output/agents-config.json` | Provisioned user details |
-| `output/provisioning-report.md` | Human-readable summary |
-| `output/passwords.txt` | Generated passwords (secure!) |
-
-## Tools Directory
-
-### Debug Tools (`tools/debug/`)
-
-Ad-hoc scripts for debugging and testing. These often have hardcoded values and are not part of the main workflow.
-
-| Script | Purpose |
-|--------|---------|
-| `check-app-permissions.mjs` | Verify Azure AD app permissions |
-| `check-connection.mjs` | Check Graph Connector status |
-| `check-token-scopes.mjs` | Inspect token scopes |
-| `test-*.mjs` | Various test scripts |
-| `verify-*.mjs` | Verification scripts |
-
-### Admin Tools (`tools/admin/`)
-
-Administrative utilities for managing the Graph Connector.
-
-| Script | Purpose |
-|--------|---------|
-| `cleanup-orphaned-items.mjs` | Delete orphaned external items |
-| `delete-connection.mjs` | Delete Graph Connector connection |
-
-## Documentation
-
-All user documentation is in `docs/`:
-
-| Document | Purpose |
-|----------|---------|
-| `docs/README.md` | Documentation index |
-| `docs/SETUP.md` | Azure AD setup guide |
-| `docs/USAGE.md` | Usage instructions |
-| `docs/ARCHITECTURE-OPTION-A-B.md` | Architecture details |
-| `docs/PEOPLE-DATA-AUTH-SOLUTION.md` | Auth solution for Option B |
-| `docs/OPTION-B-IMPLEMENTATION-GUIDE.md` | Option B implementation |
-| `docs/STATE-MANAGEMENT.md` | State tracking details |
+| `src/enrich-profiles-hybrid.ts` | Main enrichment - Profile API + Connectors |
+| `src/profile-writer.ts` | Profile API writer (skills, languages, notes, etc.) |
+| `src/provision.ts` | User provisioning (Option A) |
+| `src/people-connector/item-ingester.ts` | Graph Connector item ingestion |
+| `src/schema/user-property-schema.ts` | Property definitions with profileApiEndpoint |
 
 ## Common Workflows
 
@@ -344,118 +205,57 @@ All user documentation is in `docs/`:
 cp .env.example .env
 # Edit .env with credentials
 
-# 2. Setup Graph Connector (Option B)
-npm run enrich-profiles:setup
+# 2. Create users (Option A)
+npm run provision -- --csv config/users.csv
 
-# 3. Wait for schema to be ready
-npm run enrich-profiles:wait
-
-# 4. Create users (Option A)
-npm run provision
-
-# 5. Enrich profiles (Option B)
-npm run enrich-profiles
+# 3. Enrich profiles with setup (creates Graph Connector)
+npm run enrich:setup -- --csv config/users.csv
 ```
 
-### Update Existing Users
+### Regular Enrichment
 
 ```bash
-# Update CSV file, then:
-npm run provision          # Updates standard properties
-npm run enrich-profiles    # Updates enrichment data
+# Update profiles from CSV
+npm run enrich -- --csv config/users.csv
 ```
 
-### Tenant Reset (Start Fresh)
+### Profile API Only (No Custom Properties)
 
 ```bash
-# 1. Preview what will be deleted (safe - no changes)
-npm run reset-tenant
-
-# 2. Actually delete all non-admin users
-npm run reset-tenant:confirm
-
-# 3. Provision new users
-npm run provision -- --csv config/new-users.csv
+# If you only need skills, languages, notes, interests
+npm run enrich:profile-api-only -- --csv config/users.csv
 ```
 
-**Protected accounts are NEVER deleted:**
-- Email patterns: `admin@*`, `administrator@*`, `root@*`, `systemadmin@*`
-- Azure AD roles: Global Administrator, Security Administrator, etc.
-- Custom exclusions from `.env` (PROTECTED_EMAILS, PROTECTED_EMAIL_PATTERNS)
+## Known Issues
 
-## Troubleshooting
+### Profile API Skills - Proficiency Bug
+Microsoft Graph API has a bug where certain `proficiency` values fail:
+- **Working**: `elementary`, `limitedWorking`, `expert`
+- **Failing**: `generalProfessional`, `advancedProfessional`
 
-### Option A Issues
+**Workaround**: The ProfileWriter omits proficiency or uses working values only.
 
-**"Invalid client"**: App not configured correctly in Azure AD
-**"Insufficient privileges"**: Missing delegated permissions or admin consent
-**"License assignment failed"**: No available licenses
-
-### Option B Issues
-
-**"401 Unauthorized"**: Missing client secret or application permissions
-**"Schema stuck in draft"**: Wait 10+ minutes, provisioning is slow
-**"Items not searchable"**: Wait 1-2 hours for indexing
-
-### Common Fixes
-
-```bash
-# Clear cached tokens and re-authenticate
-npm run logout
-
-# Rebuild TypeScript
-npm run build
-
-# Check Graph Connector status
-node tools/debug/check-connection.mjs
+### Profile API Notes - Schema Format
+The `detail` property must be an `itemBody` object:
+```json
+{
+  "detail": {
+    "contentType": "text",
+    "content": "About me text..."
+  }
+}
 ```
 
-## Security Considerations
+### Irish Language
+The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 tag.
 
-### Token Storage
-- Option A tokens: `~/.m365-provision/token-cache.json` (chmod 600)
-- Option B: Uses client secret from .env (never commit!)
+## Security
 
-### Best Practices
 - Never commit `.env` files
-- Keep `output/` directory gitignored
-- Rotate client secrets periodically
-- Use separate Azure AD apps for dev/prod
-
-## Key Learnings
-
-### Graph Connectors Require Application Permissions
-
-Graph Connectors operate as background services and require OAuth 2.0 Client Credentials Flow with Application Permissions. Delegated permissions (user sign-in) will result in 401 errors.
-
-### Profile Source Registration is Critical
-
-For connector data to appear in user profiles (`/me/profile` API) and profile cards, you must:
-1. Register the connector as a profile source: `POST /admin/people/profileSources`
-2. Add it to prioritized sources: `PATCH /admin/people/profilePropertySettings/{id}`
-
-**Important API details:**
-- Both endpoints are **beta-only** - use the beta Graph client
-- The profile property settings endpoint returns a **collection with `value` array** - you must extract the settings ID to PATCH
-- Requires `PeopleSettings.ReadWrite.All` application permission with admin consent
-
-### Schema Provisioning Takes Time
-
-After creating a Graph Connector connection, the schema must transition from "draft" to "ready" state. This can take 10+ minutes. Use `npm run enrich-profiles:wait` to poll for readiness.
-
-### Schema Cannot Be Updated
-
-Once a schema is registered on a connection, it cannot be modified. If you need to change the schema, you must delete the connection and recreate it. Handle the "UpdateNotAllowed" error gracefully.
-
-### Item Indexing Has Latency
-
-After ingesting external items, they may not be immediately searchable. Allow 1-2 hours for full indexing in M365 Search/Copilot.
-
-### Profile Data Propagation Takes Time
-
-After ingestion and profile source registration, data may take 1-24 hours to appear in the `/me/profile` API and profile cards.
+- Tokens cached in `~/.m365-provision/` with restricted permissions
+- Protected accounts (admin@*, etc.) are never deleted during reset
 
 ---
 
 **Last Updated**: 2026-01-25
-**Version**: 2.2.0 (Profile source registration, languages support)
+**Version**: 3.0.0 (Hybrid Profile API + Graph Connectors)
