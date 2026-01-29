@@ -33,6 +33,7 @@ Thumbs.db
 # IDE / Editor
 .vscode/
 .idea/
+.windsurf/
 *.swp
 *.swo
 *~

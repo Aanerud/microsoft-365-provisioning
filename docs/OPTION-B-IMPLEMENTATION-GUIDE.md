@@ -1,6 +1,6 @@
 # Option B: Profile Enrichment via Microsoft Graph Connectors
 
-**Status**: ✅ Implemented and Working (2026-01-25)
+**Status**: ✅ Implemented and Working (2026-01-26)
 
 ## Overview
 
@@ -8,10 +8,16 @@ Option B enriches Microsoft 365 user profiles by ingesting additional data throu
 
 - Microsoft 365 profile cards
 - Microsoft Search
-- Microsoft 365 Copilot responses
+- **Microsoft 365 Copilot responses** (requires people data labels)
 - Teams member discovery
 
 > **Note**: Profile data propagation to the `/me/profile` API can take 1-24 hours after ingestion.
+
+### Key Insight: Copilot Searchability
+
+Data written via Profile API with delegated auth is stored as `source.type: "User"` with `isSearchable: false`. **Only data from system sources (connectors with people data labels) is Copilot-searchable.**
+
+This is why we use Graph Connectors with people data labels for skills and notes - they become searchable by Copilot.
 
 ## Architecture
 
@@ -24,7 +30,7 @@ Option B enriches Microsoft 365 user profiles by ingesting additional data throu
 │ - Sets standard properties (jobTitle, department, etc.)    │
 │ - Assigns manager relationships                            │
 │ - Assigns licenses                                         │
-│ - NO enrichment data (handled by Option B)                 │
+│ - NO enrichment data (handled by Hybrid Enrichment)        │
 │                                                             │
 │ Output: Real Entra ID users with standard properties       │
 └─────────────────┬───────────────────────────────────────────┘
@@ -32,21 +38,22 @@ Option B enriches Microsoft 365 user profiles by ingesting additional data throu
                   │ Users exist in Entra ID (prerequisite)
                   ↓
 ┌────────────────────────────────────────────────────────────┐
-│ Option B: Profile Enrichment                               │
-│ File: src/enrich-profiles.ts                               │
+│ Hybrid Profile Enrichment                                  │
+│ File: src/enrich-profiles-hybrid.ts                        │
 │                                                             │
-│ - Creates Graph Connector connection (once)                │
-│ - Registers schema with People Data labels (once)          │
-│ - Ingests enrichment data for all users:                   │
-│   • Official People Data (skills, certifications, etc.)    │
-│   • Custom properties (VTeam, BenefitPlan, etc.)           │
-│ - Links items to Entra ID users                            │
-│ - Automatic deletion of orphaned items (state-based)       │
-│ - Uses OAuth 2.0 Client Credentials Flow (app-only)        │
+│ PHASE 1: Profile API (Delegated Auth)                      │
+│ - Languages, interests (no connector labels available)     │
+│ - Also writes skills/aboutMe for profile card redundancy   │
+│ - Visible on profile cards, NOT Copilot-searchable         │
 │                                                             │
-│ Output: External items in Microsoft Search                 │
-│         Surfaces in profile cards & Copilot                │
-│         State file tracking for automatic cleanup          │
+│ PHASE 2: Graph Connectors (App-Only Auth)                  │
+│ - skills (personSkills label) → Copilot-searchable!        │
+│ - aboutMe (personNote label) → Copilot-searchable!         │
+│ - projects/awards/certs (people labels) → searchable       │
+│ - Links items to Entra ID users via accountInformation     │
+│ - Extra custom columns ignored (strict-by-doc)             │
+│                                                             │
+│ Output: Profile cards + Copilot search integration         │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,33 +67,30 @@ Handled by `provision.ts` - written directly to Entra ID user object:
 - usageLocation, preferredLanguage
 - mail, mobilePhone, businessPhones
 
-### Enrichment Properties (Option B)
-Handled by `enrich-profiles.ts` - stored in Graph Connector:
+### Enrichment Properties (Hybrid)
+Handled by `enrich-profiles-hybrid.ts` - uses optimal method for each data type:
 
-**Official People Data** (with Microsoft labels):
-- `skills` → `personSkills`
-- `pastProjects` → `personProjects`
-- `certifications` → `personCertifications`
-- `awards` → `personAwards`
-- `aboutMe` → `personNote`
-- `mySite` → `personWebSite`
-- `birthday` → `personAnniversaries`
+**Graph Connector with People Data Labels** (Copilot-searchable):
+| Property | Label | Copilot Searchable |
+|----------|-------|-------------------|
+| `skills` | `personSkills` | **Yes** |
+| `aboutMe` | `personNote` | **Yes** |
+| `pastProjects` | `personProjects` | Yes |
+| `certifications` | `personCertifications` | Yes |
+| `awards` | `personAwards` | Yes |
+| `mySite` | `personWebSite` | Yes |
+| `birthday` | `personAnniversaries` | Yes |
 
-**Custom People Data** (searchable, no official labels):
-- `interests`
-- `responsibilities`
-- `schools`
-- `languages` (with proficiency levels, e.g., "Italian (Native)", "English (Fluent)")
+**Custom Columns (Ignored by Connector)**:
+Extra CSV columns without people data labels are ignored in strict-by-doc mode.
 
-**Custom Organization Properties** (searchable):
-- `VTeam`
-- `BenefitPlan`
-- `CostCenter`
-- `BuildingAccess`
-- `ProjectCode`
-- `WritingStyle`
-- `Specialization`
-- *(Any additional columns in CSV not in schema)*
+**Profile API Only** (no connector labels available - NOT Copilot-searchable):
+| Property | Visible on Profile Card | Copilot Searchable |
+|----------|------------------------|-------------------|
+| `languages` | Yes | **No** (platform limitation) |
+| `interests` | Yes | **No** (platform limitation) |
+
+> **Important**: Languages and interests have no people data labels in Microsoft's connector framework, so they cannot be made Copilot-searchable. They remain Profile API only.
 
 ## Prerequisites
 
@@ -149,10 +153,10 @@ npm run enrich-profiles:setup
 3. **Adds to prioritized profile sources** (beta API: `/admin/people/profilePropertySettings`)
    - Sets connector as highest priority (index 0)
    - Ensures connector data takes precedence over other sources
-4. Registers schema with 18+ properties:
-   - 1 required: `accountInformation` (links to Entra ID user)
-   - 7 with official People Data labels
-   - 10+ custom searchable properties
+4. Registers schema with people data labeled properties only:
+   - Required: `accountInformation` (links to Entra ID user)
+   - People-labeled properties present in CSV (skills, aboutMe, projects, etc.)
+   - Extra custom columns are ignored
 5. Waits for schema to be ready (can take 5-10 minutes)
 
 **Output**:
@@ -238,24 +242,18 @@ Each person is converted to an external item with this structure:
 ```json
 {
   "id": "person-email-domain-com",
-  "content": {
-    "value": "About me text. Skills: TypeScript, Python, Azure. Interests: Open Source, Cloud. VTeam: Platform Team",
-    "type": "text"
-  },
   "properties": {
     "accountInformation": "{\"userPrincipalName\":\"email@domain.com\"}",
     "skills@odata.type": "Collection(String)",
     "skills": [
       "{\"displayName\":\"TypeScript\"}",
-      "{\"displayName\":\"Python\"}",
       "{\"displayName\":\"Azure\"}"
     ],
-    "interests@odata.type": "Collection(String)",
-    "interests": ["Open Source", "Cloud"],
-    "aboutMe": "{\"displayName\":\"Experienced engineer...\",\"detail\":{\"value\":\"Experienced engineer...\"}}",
-    "VTeam": "Platform Team",
-    "BenefitPlan": "Premium Plus",
-    "CostCenter": "ENG-DEPT"
+    "pastProjects@odata.type": "Collection(String)",
+    "pastProjects": [
+      "{\"displayName\":\"Migration\"}"
+    ],
+    "aboutMe": "{\"detail\":{\"contentType\":\"text\",\"content\":\"Experienced engineer...\"}}"
   },
   "acl": [
     {
@@ -270,46 +268,49 @@ Each person is converted to an external item with this structure:
 ### Key Points
 
 1. **Item ID**: Generated from email address (e.g., `person-sarah-chen-domain-com`)
-2. **accountInformation**: REQUIRED - links to Entra ID user via `userPrincipalName`
-3. **Labeled properties**: JSON-serialized with `displayName` field (required by People Data)
-4. **Custom properties**: Stored as plain strings or arrays
-5. **Array properties**: Marked with `@odata.type: Collection(String)`
-6. **Content**: Searchable text combining all enrichment data
+2. **accountInformation**: REQUIRED - links to Entra ID user via `userPrincipalName` (JSON serialized)
+3. **skills**: JSON-serialized `skillProficiency` entities with `displayName` field (for `personSkills` label)
+4. **aboutMe**: JSON-serialized `personAnnotation` entity with `detail.contentType` and `detail.content` (for `personNote` label)
+5. **Custom columns**: Ignored by the connector (strict-by-doc)
+6. **Array properties**: Marked with `@odata.type: Collection(String)`
 7. **ACL**: Everyone in the organization can view
+8. **No content field**: People data connectors rely on properties with labels, not content field
 
 ## Schema Details
 
-The schema includes 18+ properties:
+The hybrid enrichment schema includes core properties with people data labels:
 
-| Property | Type | Label | Category |
-|----------|------|-------|----------|
-| accountInformation | string | personAccount | Required (link to Entra ID) |
-| skills | stringCollection | personSkills | Official People Data |
-| pastProjects | stringCollection | personProjects | Official People Data |
-| certifications | stringCollection | personCertifications | Official People Data |
-| awards | stringCollection | personAwards | Official People Data |
-| aboutMe | string | personNote | Official People Data |
-| mySite | string | personWebSite | Official People Data |
-| birthday | string | personAnniversaries | Official People Data |
-| interests | stringCollection | *(none)* | Custom searchable |
-| responsibilities | stringCollection | *(none)* | Custom searchable |
-| schools | stringCollection | *(none)* | Custom searchable |
-| languages | stringCollection | *(none)* | Custom searchable (with proficiency) |
-| VTeam | string | *(none)* | Custom organization property |
-| BenefitPlan | string | *(none)* | Custom organization property |
-| CostCenter | string | *(none)* | Custom organization property |
-| BuildingAccess | string | *(none)* | Custom organization property |
-| ProjectCode | string | *(none)* | Custom organization property |
-| WritingStyle | string | *(none)* | Custom organization property |
-| Specialization | string | *(none)* | Custom organization property |
+### Core Schema (People Data Labels for Copilot)
 
-**Dynamic Schema**: If your CSV contains additional columns not in the standard schema, they're automatically added as custom searchable properties.
+| Property | Type | Label | Copilot Searchable |
+|----------|------|-------|-------------------|
+| `accountInformation` | string | `personAccount` | Required for user mapping |
+| `skills` | stringCollection | `personSkills` | **Yes** |
+| `aboutMe` | string | `personNote` | **Yes** |
 
-**Languages Format**: Languages support proficiency levels in parenthetical format:
-```csv
-languages,"['Italian (Native)','English (Fluent)','French (Professional)']"
-```
-Proficiency levels: Native, Fluent, Professional, Conversational, Basic
+### Custom Columns (Ignored)
+
+Extra CSV columns without people data labels are ignored by the connector in strict-by-doc mode.
+
+**Dynamic Schema**: Only people-labeled properties are included; extra columns are ignored.
+
+### Available People Data Labels (Microsoft)
+
+From [Microsoft documentation](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/build-connectors-with-people-data):
+
+| Label | Type | Profile Entity |
+|-------|------|----------------|
+| `personAccount` | string | userAccountInformation (required) |
+| `personSkills` | stringCollection | skillProficiency |
+| `personNote` | string | personAnnotation |
+| `personCertifications` | stringCollection | personCertification |
+| `personAwards` | stringCollection | personAward |
+| `personProjects` | stringCollection | projectParticipation |
+| `personAddresses` | stringCollection | itemAddress |
+| `personEmails` | stringCollection | itemEmail |
+| `personPhones` | stringCollection | itemPhone |
+
+**NOT available**: `personLanguages`, `personInterests` (platform limitation - these cannot be made Copilot-searchable via connectors)
 
 ## Authentication Flow
 
@@ -472,12 +473,13 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 
 **Symptom**: Items ingested successfully but not searchable
 
-**Cause**: Search indexing delay (can take 1-2 hours)
+**Cause**: Search indexing delay (expect 6+ hours) or using app-only search for `externalItem`
 
 **Solution**:
-1. Wait for indexing to complete
-2. Verify items exist: `node verify-items.mjs`
-3. Check Microsoft Search admin center for indexing status
+1. Wait for indexing to complete (6+ hours typical)
+2. Verify items exist: `node tools/debug/verify-items.mjs`
+3. Check search totals with delegated auth: `node tools/debug/verify-ingestion-progress.mjs --search-auth delegated`
+4. Check Microsoft Search admin center for indexing status
 
 ### Profile Data Not Appearing in /me/profile API
 
@@ -495,6 +497,24 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 - Profile source registration uses beta API: `POST /admin/people/profileSources`
 - Prioritization uses: `PATCH /admin/people/profilePropertySettings/{id}`
 - The API returns a collection with `value` array - must extract settings ID to PATCH
+
+### Profile Data Not Searchable by Copilot
+
+**Symptom**: Skills/notes written via Profile API appear on cards but Copilot can't find them. When asking "Find English speakers", Copilot shows people but marks them as "not confirmed".
+
+**Cause**: Data written via Profile API with delegated auth is stored as `source.type: "User"` with `isSearchable: false`. Only data from system sources (connectors with people data labels) is Copilot-searchable.
+
+**Solution** (implemented in hybrid enrichment):
+1. Write skills via Graph Connector with `personSkills` label
+2. Write aboutMe via Graph Connector with `personNote` label
+3. Delete and recreate connector (schema changes require this)
+4. Wait 6+ hours for indexing
+5. Test with Copilot: "Find people with skills in [skill name]"
+
+**Technical Details**:
+- Skills must be JSON-serialized `skillProficiency` entities: `{"displayName": "TypeScript"}`
+- AboutMe must be JSON-serialized `personAnnotation` entity: `{"detail": {"contentType": "text", "content": "..."}}`
+- Languages have NO connector label - platform limitation, cannot be made Copilot-searchable
 
 ### Profile Source Registration Failed
 
@@ -522,11 +542,16 @@ Arrays in CSV should be formatted as:
 
 ## Verification
 
-After ingestion, verify the data:
+After ingestion, verify the data and indexing progress:
 
 ```bash
-# Check ingested items
-node verify-items.mjs
+# Compare CSV totals vs indexed items (delegated auth)
+npm run build
+node tools/debug/verify-ingestion-progress.mjs \
+  --search-auth delegated \
+  --connection-id m365people \
+  --csv config/textcraft-europe.csv \
+  --query "*"
 ```
 
 **Expected Output**:
@@ -538,6 +563,11 @@ node verify-items.mjs
      - Interests: 2 items
      - About: Experienced executive...
 ```
+
+Notes:
+- Search for `externalItem` requires delegated auth (default scope: `ExternalItem.Read.All`).
+- The script falls back to `connection.itemCount` if search is unavailable.
+- Use `--sample-email` to fetch a specific external item and verify properties/ACL.
 
 **Manual Verification**:
 1. **Microsoft Search**: Search for enrichment data (e.g., "skills:TypeScript")
@@ -553,6 +583,7 @@ node verify-items.mjs
 | `npm run enrich-profiles -- --csv path/to/file.csv` | Ingest from specific CSV |
 | `npm run enrich-profiles:dry-run` | Preview external items without ingesting |
 | `npm run enrich-profiles -- --connection-id custom-id` | Use custom connection ID |
+| `node tools/debug/verify-ingestion-progress.mjs --search-auth delegated ...` | Monitor indexing progress |
 
 ## Automatic Deletion (Orphan Cleanup)
 
@@ -661,14 +692,25 @@ npm run enrich-profiles:setup
 ✅ **Single enrichment system**: All non-standard data in one place
 ✅ **Copilot integration**: Data surfaces in AI responses
 ✅ **Profile cards**: Enrichment appears in M365 profile cards
-✅ **Microsoft Search**: All data is searchable
-✅ **Flexible schema**: Add custom properties without code changes
+✅ **Microsoft Search**: People-labeled connector data is searchable (after indexing delay)
+✅ **Strict schema**: Only people-labeled properties ingested (extra columns ignored)
 ✅ **Same CSV file**: No duplicate data entry
 ✅ **Batch operations**: Efficient ingestion
 
 ---
 
-**Last Updated**: 2026-01-25
-**Status**: ✅ Production Ready
-**Authentication**: OAuth 2.0 Client Credentials Flow
+**Last Updated**: 2026-01-29
+**Status**: ✅ Production Ready (with Copilot searchability via people data labels)
+**Authentication**: Hybrid (Delegated for Profile API, Client Credentials for Connectors)
+**Main File**: `src/enrich-profiles-hybrid.ts`
 **Sample Data**: `config/textcraft-europe.csv` (95 users)
+
+## Copilot Searchability Summary
+
+| Data Type | Method | Copilot Searchable |
+|-----------|--------|-------------------|
+| Skills | Connector (`personSkills` label) | **Yes** |
+| Notes/AboutMe | Connector (`personNote` label) | **Yes** |
+| Custom props (VTeam, etc.) | Connector (no label) | **Yes** |
+| Languages | Profile API only | **No** (no label available) |
+| Interests | Profile API only | **No** (no label available) |

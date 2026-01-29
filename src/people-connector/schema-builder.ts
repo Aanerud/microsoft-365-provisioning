@@ -1,54 +1,54 @@
-import { getOptionBProperties, getPeopleDataMapping, getCustomProperties } from '../schema/user-property-schema.js';
+import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-property-schema.js';
+
+const PROPERTY_NAME_REGEX = /^[A-Za-z0-9]+$/;
+const MAX_PROPERTY_NAME_LENGTH = 32;
+const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
+  ['personAnniversaries', 'stringCollection'],
+]);
+
+function assertValidPropertyName(name: string): void {
+  if (!PROPERTY_NAME_REGEX.test(name)) {
+    throw new Error(
+      `Invalid property name "${name}". People connector properties must be alphanumeric only.`
+    );
+  }
+  if (name.length > MAX_PROPERTY_NAME_LENGTH) {
+    throw new Error(
+      `Invalid property name "${name}". People connector properties must be <= ${MAX_PROPERTY_NAME_LENGTH} characters.`
+    );
+  }
+}
 
 export class PeopleSchemaBuilder {
   /**
-   * Build schema from Option B properties + custom properties from CSV
-   * @param csvColumns - All columns from CSV to detect custom properties
+   * Build schema from Option B properties with people data labels only.
    */
-  static buildPeopleSchema(csvColumns: string[]): any[] {
+  static buildPeopleSchema(): any[] {
     const properties = [];
     const peopleDataMapping = getPeopleDataMapping();
     const optionBProps = getOptionBProperties();
-    const customProps = getCustomProperties(csvColumns);
 
-    // REQUIRED: Account information property
+    assertValidPropertyName('accountInformation');
     properties.push({
       name: 'accountInformation',
       type: 'string',
       labels: ['personAccount'],
-      searchable: false,
-      queryable: false,
-      retrievable: true
     });
 
-    // Add Option B standard properties (with or without labels)
     for (const prop of optionBProps) {
       const label = peopleDataMapping.get(prop.name);
-      const schemaProperty: any = {
-        name: prop.name,
-        type: prop.type === 'array' ? 'stringCollection' : 'string',
-        searchable: true,
-        retrievable: true,
-        refinable: prop.type === 'array' // Arrays can be refined
-      };
-
-      // Add label if available (official people data)
-      if (label) {
-        schemaProperty.labels = [label];
+      if (!label) {
+        continue;
       }
-      // Otherwise it's a custom searchable property (no label)
 
-      properties.push(schemaProperty);
-    }
+      assertValidPropertyName(prop.name);
+      const overrideType = LABEL_TYPE_OVERRIDES.get(label);
+      const schemaType = overrideType ?? (prop.type === 'array' ? 'stringCollection' : 'string');
 
-    // Add custom organization properties (VTeam, BenefitPlan, etc.)
-    for (const customProp of customProps) {
       properties.push({
-        name: customProp,
-        type: 'string', // Custom properties default to string
-        searchable: true,
-        retrievable: true,
-        queryable: true
+        name: prop.name,
+        type: schemaType,
+        labels: [label],
       });
     }
 

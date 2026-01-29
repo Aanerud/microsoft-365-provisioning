@@ -45,7 +45,7 @@ Ingrid Johansen,ingrid.johansen@domain.onmicrosoft.com,CEO,Executive,Ingrid,Joha
 Lars Hansen,lars.hansen@domain.onmicrosoft.com,CTO,Engineering,Lars,Hansen,Chief Technology Officer,Employee,Nordic Solutions AS,Oslo HQ,Drammensveien 134,Oslo,Oslo,Norway,0277,NO,nb-NO,+47 918 45 678,"['+47 22 12 34 57']",EMP002,2016-06-01,ingrid.johansen@domain.onmicrosoft.com,Executive Leadership,Executive Plus,ENG-DEPT,Level-5,ENG-000
 ```
 
-**Custom columns** (`VTeam`, `BenefitPlan`, `CostCenter`, `BuildingAccess`, `ProjectCode`) become searchable in M365 Copilot via Graph Connectors.
+**Note**: Option B now ingests only official people data labeled columns. Extra custom columns (like `VTeam`, `BenefitPlan`, `CostCenter`) are ignored by the connector to stay strict with Microsoft docs.
 
 Run both provisioning + enrichment:
 ```bash
@@ -62,8 +62,8 @@ npm run enrich-profiles -- --csv config/full-team.csv
 | **User Creation** | Creates Entra ID accounts from CSV |
 | **Multi-License Assignment** | Assigns multiple M365 licenses (E5 + Copilot, etc.) |
 | **Manager Hierarchy** | Sets up reporting structure via `ManagerEmail` column |
-| **Profile Enrichment** | Adds skills, interests, certifications to profiles |
-| **Custom Properties** | Any extra CSV column becomes searchable in Copilot |
+| **Profile Enrichment** | Adds people-data labeled enrichment (skills, aboutMe, certifications, awards, projects) |
+| **Custom Properties** | Extra CSV columns are ignored by the connector (strict-by-doc) |
 | **State Management** | Detects CREATE/UPDATE/NOOP - won't duplicate users |
 | **Tenant Reset** | Safely delete all users except protected admin accounts |
 
@@ -138,6 +138,8 @@ npm run provision -- --csv config/textcraft-europe.csv
 
 ### Advanced: Enrich Profiles with People Data
 
+Option A (provision) must run first so Entra ID users exist before connector ingestion.
+
 First-time setup (creates Graph Connector):
 ```bash
 npm run enrich-profiles:setup
@@ -148,6 +150,25 @@ Then enrich:
 ```bash
 npm run enrich-profiles -- --csv config/textcraft-europe.csv
 ```
+
+### Monitor Ingestion Progress
+
+Use the verification script to compare CSV totals with Microsoft Search indexing and confirm a sample item:
+
+```bash
+npm run build
+node tools/debug/verify-ingestion-progress.mjs \
+  --search-auth delegated \
+  --connection-id m365people \
+  --csv config/textcraft-europe.csv \
+  --query "*"
+```
+
+Notes:
+- externalItem search requires delegated auth (default scope: `ExternalItem.Read.All`).
+- Use `--search-auth token` with `--search-token` to skip browser login.
+- `--region` is only used for app-only search (delegated ignores it).
+- Indexing can take 6+ hours before Microsoft Search/Copilot reflects updates.
 
 ### Tenant Reset: Start Fresh
 
@@ -198,26 +219,30 @@ npm run provision -- --csv config/new-users.csv  # 3. Provision new users
 
 ### Enrichment Properties (Option B - Graph Connector)
 
-These become searchable in M365 Copilot:
+These use Microsoft people data labels and are Copilot-searchable:
 
-| Column | Example | Searchable In |
-|--------|---------|---------------|
-| `skills` | "['TypeScript','Azure']" | Copilot: "Who knows Azure?" |
-| `interests` | "['AI/ML','Hiking']" | Copilot: "Who's interested in AI?" |
-| `aboutMe` | "10 years experience..." | Copilot: "Tell me about Sarah" |
-| `schools` | "['MIT','Stanford']" | Copilot: "Who went to MIT?" |
-| `languages` | "['Italian (Native)','English (Fluent)']" | Copilot: "Who speaks Italian?" |
+| Column | Example | People data label |
+|--------|---------|------------------|
+| `skills` | "['TypeScript','Azure']" | `personSkills` |
+| `aboutMe` | "10 years experience..." | `personNote` |
+| `pastProjects` | "['Migration']" | `personProjects` |
+| `certifications` | "['PMP']" | `personCertifications` |
+| `awards` | "['MVP']" | `personAwards` |
+| `mySite` | "https://intranet/" | `personWebSite` |
+| `birthday` | "2000-01-01" | `personAnniversaries` |
 
-### Custom Properties (Your Own Columns)
+Languages/interests have no connector labels and are not ingested via the connector.
 
-Any column not in the standard list becomes a custom property:
+### Custom Columns (Ignored by Connector)
+
+Extra columns are ignored by the connector in strict-by-doc mode. Use the supported people data labeled columns above if you need Copilot searchability:
 
 ```csv
 name,email,role,department,VTeam,CostCenter,BuildingAccess,WritingStyle,Specialization
 Sarah Chen,sarah@domain.com,CEO,Executive,Leadership,C-SUITE,Level-5,Strategic,Leadership
 ```
 
-`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → All searchable in Copilot!
+`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → Ignored by the connector (kept only in CSV).
 
 ---
 
@@ -271,7 +296,7 @@ This is a **learning project**. We documented everything we discovered:
 3. **Profile prioritization requires beta API** - Use `PATCH /admin/people/profilePropertySettings/{id}` (not the collection endpoint)
 4. **Schema provisioning is slow** - Wait 10+ minutes after creating a connection
 5. **Schema cannot be updated** - Once registered, you must delete and recreate the connection to change schema
-6. **Items aren't instantly searchable** - Allow 1-2 hours for Copilot indexing
+6. **Items aren't instantly searchable** - Expect 6+ hours for Microsoft Search/Copilot indexing
 7. **Profile data propagation takes time** - Allow 1-24 hours for data to appear in profile API
 8. **State management prevents duplicates** - CSV is idempotent; run it as many times as you want
 
@@ -301,6 +326,9 @@ npm run enrich-profiles:setup          # Setup Graph Connector (first time)
 npm run enrich-profiles:wait           # Wait for schema ready (~10 min)
 npm run enrich-profiles                # Enrich user profiles
 npm run enrich-profiles:dry-run        # Preview enrichment
+
+# Ingestion Verification
+node tools/debug/verify-ingestion-progress.mjs --search-auth delegated --connection-id m365people --csv config/textcraft-europe.csv --query "*"
 
 # Utilities
 npm run logout                         # Clear cached auth tokens

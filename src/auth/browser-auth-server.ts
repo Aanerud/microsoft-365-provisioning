@@ -25,6 +25,7 @@ export interface AuthResult {
 export class BrowserAuthServer {
   private app: express.Application;
   private server?: Server;
+  private authTimeout?: ReturnType<typeof setTimeout>;
   private config: Required<BrowserAuthConfig> & { forceRefresh: boolean };
   private resolveAuth?: (result: AuthResult) => void;
   private rejectAuth?: (error: Error) => void;
@@ -140,7 +141,7 @@ export class BrowserAuthServer {
       });
 
       // Timeout after 5 minutes
-      setTimeout(() => {
+      this.authTimeout = setTimeout(() => {
         if (this.server) {
           reject(new Error('Authentication timeout after 5 minutes'));
           this.stopServer();
@@ -172,6 +173,10 @@ export class BrowserAuthServer {
     if (this.server) {
       this.server.close();
       this.server = undefined;
+    }
+    if (this.authTimeout) {
+      clearTimeout(this.authTimeout);
+      this.authTimeout = undefined;
     }
   }
 }

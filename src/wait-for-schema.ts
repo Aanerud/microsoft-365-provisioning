@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { GraphClient } from './graph-client.js';
-import { BrowserAuthServer } from './auth/browser-auth-server.js';
 import { PeopleConnectionManager } from './people-connector/connection-manager.js';
 import dotenv from 'dotenv';
 
@@ -10,26 +9,22 @@ async function waitForSchema() {
   const tenantId = process.env.AZURE_TENANT_ID || '';
   const clientId = process.env.AZURE_CLIENT_ID || '';
   const connectionId = 'm365provisionpeople';
+  const clientSecret = process.env.AZURE_CLIENT_SECRET || '';
 
-  // Authenticate with Graph Connector scopes
-  console.log('🔐 Authenticating...');
-  const authServer = new BrowserAuthServer({
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error('AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET are required.');
+  }
+
+  // Authenticate with Graph Connector scopes (app-only)
+  console.log('🔐 Authenticating (app-only)...');
+  const graphClient = new GraphClient({
     tenantId,
     clientId,
-    scopes: [
-      'User.Read.All',
-      'Directory.Read.All',
-      'ExternalConnection.ReadWrite.All',
-      'ExternalItem.ReadWrite.All'
-    ]
+    clientSecret,
   });
-  const authResult = await authServer.authenticate();
+  const { betaClient } = graphClient.getClients();
 
-  // Initialize clients
-  const graphClient = new GraphClient({ accessToken: authResult.accessToken });
-  const { client, betaClient } = graphClient.getClients();
-
-  const connectionManager = new PeopleConnectionManager(client, betaClient, connectionId);
+  const connectionManager = new PeopleConnectionManager(betaClient, connectionId);
 
   console.log('\n⏳ Waiting for schema to be ready...');
   console.log('   This can take 5-10 minutes for Graph Connectors\n');
@@ -39,8 +34,8 @@ async function waitForSchema() {
 
   while (attempts < maxAttempts) {
     try {
-      const connection = await connectionManager.getConnection();
-      const state = connection.state;
+      const schemaStatus = await connectionManager.getSchema();
+      const state = schemaStatus?.state ?? schemaStatus?.status;
 
       console.log(`[${new Date().toLocaleTimeString()}] Schema state: ${state}`);
 
@@ -49,7 +44,7 @@ async function waitForSchema() {
         console.log('\nRun: npm run enrich-profiles -- --csv config/agents-test-enrichment.csv');
         process.exit(0);
       } else if (state === 'failed') {
-        console.error(`\n❌ Schema registration FAILED: ${connection.failureReason}`);
+        console.error(`\n❌ Schema registration FAILED: ${schemaStatus?.failureReason || 'Unknown reason'}`);
         process.exit(1);
       }
 

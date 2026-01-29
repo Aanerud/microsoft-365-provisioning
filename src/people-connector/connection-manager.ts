@@ -1,5 +1,15 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 
+const CONNECTION_ID_REGEX = /^[A-Za-z0-9]+$/;
+
+function assertValidConnectionId(connectionId: string): void {
+  if (!CONNECTION_ID_REGEX.test(connectionId)) {
+    throw new Error(
+      `Invalid connectionId "${connectionId}". People connector connection IDs must be alphanumeric only.`
+    );
+  }
+}
+
 export interface PeopleConnectionConfig {
   connectionId: string;
   name: string;
@@ -7,12 +17,11 @@ export interface PeopleConnectionConfig {
 }
 
 export class PeopleConnectionManager {
-  private client: Client;
   private betaClient: Client;
   private connectionId: string;
 
-  constructor(client: Client, betaClient: Client, connectionId: string) {
-    this.client = client;
+  constructor(betaClient: Client, connectionId: string) {
+    assertValidConnectionId(connectionId);
     this.betaClient = betaClient;
     this.connectionId = connectionId;
   }
@@ -40,15 +49,23 @@ export class PeopleConnectionManager {
       }
     };
 
-    await this.client.api('/external/connections').post(connectionRequest);
-    console.log(`✓ Created connection: ${this.connectionId}`);
+    // Use beta API for connection creation - required for contentCategory: 'people'
+    await this.betaClient.api('/external/connections').post(connectionRequest);
+    console.log(`✓ Created connection: ${this.connectionId} (with contentCategory: people)`);
   }
 
   /**
    * Get connection status
    */
   async getConnection(): Promise<any> {
-    return await this.client.api(`/external/connections/${this.connectionId}`).get();
+    return await this.betaClient.api(`/external/connections/${this.connectionId}`).get();
+  }
+
+  /**
+   * Get schema status
+   */
+  async getSchema(): Promise<any> {
+    return await this.betaClient.api(`/external/connections/${this.connectionId}/schema`).get();
   }
 
   /**
@@ -61,11 +78,13 @@ export class PeopleConnectionManager {
     };
 
     try {
-      await this.client
+      // Use beta API for schema registration - required for people data labels like 'personAccount'
+      // The v1.0 API may treat these labels as 'unknownFutureValue' and fail user mapping
+      await this.betaClient
         .api(`/external/connections/${this.connectionId}/schema`)
-        .post(schema);
+        .patch(schema);
 
-      console.log('✓ Schema registration initiated');
+      console.log('✓ Schema registration initiated (using beta API)');
 
       // Wait for schema to be ready
       await this.waitForSchemaReady();
@@ -78,6 +97,7 @@ export class PeopleConnectionManager {
       // 400 with "UpdateNotAllowed" = schema already exists and can't be updated
       if (error.statusCode === 400 && error.body?.includes('UpdateNotAllowed')) {
         console.log('✓ Schema already registered (cannot be updated)');
+        console.log('  Delete and recreate the connector to apply schema changes.');
         return;
       }
       throw error;
@@ -87,20 +107,28 @@ export class PeopleConnectionManager {
   /**
    * Wait for schema to be in 'ready' state
    */
-  private async waitForSchemaReady(maxWaitMs: number = 60000): Promise<void> {
+  private async waitForSchemaReady(maxWaitMs: number = 300000): Promise<void> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
-      const connection = await this.getConnection();
+      const schemaStatus = await this.getSchema();
+      let state = schemaStatus?.state ?? schemaStatus?.status;
+      let failureReason = schemaStatus?.failureReason;
 
-      if (connection.state === 'ready') {
-        console.log('✓ Schema is ready');
-        return;
-      } else if (connection.state === 'failed') {
-        throw new Error(`Schema registration failed: ${connection.failureReason}`);
+      if (!state) {
+        const connection = await this.getConnection();
+        state = connection.state;
+        failureReason = connection.failureReason;
       }
 
-      console.log(`  Schema state: ${connection.state}, waiting...`);
+      if (state === 'ready') {
+        console.log('✓ Schema is ready');
+        return;
+      } else if (state === 'failed') {
+        throw new Error(`Schema registration failed: ${failureReason || 'Unknown reason'}`);
+      }
+
+      console.log(`  Schema state: ${state}, waiting...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
@@ -112,7 +140,7 @@ export class PeopleConnectionManager {
    */
   async deleteConnection(): Promise<void> {
     try {
-      await this.client.api(`/external/connections/${this.connectionId}`).delete();
+      await this.betaClient.api(`/external/connections/${this.connectionId}`).delete();
       console.log(`✓ Deleted connection: ${this.connectionId}`);
     } catch (error: any) {
       if (error.statusCode === 404) {
@@ -131,9 +159,13 @@ export class PeopleConnectionManager {
    *
    * IMPORTANT: Uses beta client as /admin/people/profileSources is a beta-only endpoint
    * Requires PeopleSettings.ReadWrite.All application permission
+   *
+   * @returns true if registration succeeded, false if it failed
    */
-  async registerAsProfileSource(displayName: string, webUrl: string): Promise<void> {
+  async registerAsProfileSource(displayName: string, webUrl: string): Promise<boolean> {
     console.log('📋 Registering connection as profile source (beta API)...');
+
+    let registrationSucceeded = false;
 
     try {
       // Step 1: Register as a profile source (beta endpoint)
@@ -147,10 +179,24 @@ export class PeopleConnectionManager {
         // Must use beta client - this endpoint is not available in v1.0
         await this.betaClient.api('/admin/people/profileSources').post(profileSourcePayload);
         console.log('✓ Registered as profile source');
+        registrationSucceeded = true;
       } catch (error: any) {
         // 409 Conflict means already registered
         if (error.statusCode === 409) {
           console.log('✓ Already registered as profile source');
+          registrationSucceeded = true;
+        } else if (error.statusCode === 403) {
+          console.warn('⚠ Permission denied (403) for profile source registration');
+          console.warn('  Missing PeopleSettings.ReadWrite.All application permission');
+          console.warn('  To fix: Azure Portal > App Registrations > Your App > API Permissions');
+          console.warn('          Add Microsoft Graph > Application > PeopleSettings.ReadWrite.All');
+          console.warn('          Then grant admin consent');
+          throw error;
+        } else if (error.statusCode === 400) {
+          console.warn('⚠ Bad request (400) for profile source registration');
+          console.warn(`  Details: ${error.body?.error?.message || error.message}`);
+          console.warn('  This may be a tenant configuration issue');
+          throw error;
         } else {
           throw error;
         }
@@ -168,14 +214,18 @@ export class PeopleConnectionManager {
 
         if (!settings) {
           console.log('⚠ No profile property settings found - skipping prioritization');
-          return;
+          console.log('  This is normal for new tenants; prioritization will be set up automatically');
+          // Not a failure, just not applicable
+          return registrationSucceeded;
         }
 
         const settingsId = settings.id;
         const currentSources: string[] = settings.prioritizedSourceUrls || [];
 
-        // Check if already in prioritized list
-        if (!currentSources.includes(sourceUrl)) {
+        // Check if already in prioritized list (match by connection ID, not exact URL)
+        const alreadyPrioritized = currentSources.some(url => url.includes(this.connectionId));
+
+        if (!alreadyPrioritized) {
           // Add to front of priority list (highest priority = index 0)
           const updatedSources = [sourceUrl, ...currentSources];
 
@@ -184,17 +234,26 @@ export class PeopleConnectionManager {
             prioritizedSourceUrls: updatedSources,
           });
           console.log('✓ Added to prioritized profile sources (highest priority)');
+          // Prioritization succeeded
         } else {
           console.log('✓ Already in prioritized profile sources');
+          // Already prioritized
         }
       } catch (error: any) {
         // Profile property settings might not exist yet in some tenants
         if (error.statusCode === 404) {
           console.log('⚠ Profile property settings not found - skipping prioritization');
+          // Not a failure, just not applicable
+        } else if (error.statusCode === 403) {
+          console.warn('⚠ Permission denied (403) for profile property settings');
+          // Don't throw - registration succeeded, prioritization is optional
         } else {
-          throw error;
+          console.warn(`⚠ Failed to update prioritization: ${error.message}`);
+          // Don't throw - registration succeeded, prioritization is optional
         }
       }
+
+      return registrationSucceeded;
     } catch (error: any) {
       // Log detailed error info for debugging
       console.warn(`⚠ Profile source registration failed: ${error.message}`);
@@ -204,9 +263,16 @@ export class PeopleConnectionManager {
       if (error.body?.error?.message) {
         console.warn(`  Details: ${error.body.error.message}`);
       }
-      console.warn('  This may cause labels to show as "unknownFutureValue"');
-      console.warn('  Ensure PeopleSettings.ReadWrite.All application permission is granted');
-      console.warn('  Note: People data connectors may require tenant opt-in (preview feature)');
+      console.warn('');
+      console.warn('  To diagnose: node tools/debug/check-profile-source.mjs');
+      console.warn('  To fix manually: node tools/admin/register-profile-source.mjs');
+      console.warn('');
+      console.warn('  Common issues:');
+      console.warn('  - Missing PeopleSettings.ReadWrite.All application permission');
+      console.warn('  - People data connectors may require tenant opt-in (preview feature)');
+      console.warn('  - Connection must have contentCategory: "people"');
+
+      return false;
     }
   }
 }

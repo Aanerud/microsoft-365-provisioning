@@ -1,5 +1,5 @@
 import { Client } from '@microsoft/microsoft-graph-client';
-import { getOptionBProperties, getCustomProperties } from '../schema/user-property-schema.js';
+import { getOptionBProperties } from '../schema/user-property-schema.js';
 import { Logger } from '../utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,6 +9,44 @@ const MAX_RETRIES = 6;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
+  ['personAnniversaries', 'stringCollection'],
+]);
+
+function getLabelValueType(propertyType: string, label: string): 'string' | 'stringCollection' {
+  return LABEL_TYPE_OVERRIDES.get(label) ?? (propertyType === 'array' ? 'stringCollection' : 'string');
+}
+
+function normalizeToArray(raw: any): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return trimmed.split(',').map(v => v.trim()).filter(Boolean);
+    }
+  }
+  if (raw === null || raw === undefined) return [];
+  return [raw];
+}
+
+function serializeDisplayNameItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ displayName: String(item) });
+}
+
+function serializeAnniversaryItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ type: 'birthday', date: String(item) });
+}
 
 export interface PeopleItem {
   email: string;
@@ -20,27 +58,19 @@ export class PeopleItemIngester {
   private connectionId: string;
   private logger: Logger;
 
-  constructor(_client: Client, betaClient: Client, connectionId: string, logger: Logger) {
+  constructor(betaClient: Client, connectionId: string, logger: Logger) {
     this.betaClient = betaClient;
     this.connectionId = connectionId;
     this.logger = logger;
   }
 
   /**
-   * Convert CSV row to external item
-   * Includes Option B standard properties + custom organization properties
+   * Convert CSV row to external item (people-labeled properties only)
    */
-  createExternalItem(csvRow: any, csvColumns: string[]): any {
+  createExternalItem(csvRow: any): any {
     const email = csvRow.email;
     const itemId = `person-${email.replace(/@/g, '-').replace(/\./g, '-')}`;
     const optionBProps = getOptionBProperties();
-    const customProps = getCustomProperties(csvColumns);
-
-    // Build content from all enrichment data
-    const contentParts = [];
-    if (csvRow.aboutMe) contentParts.push(csvRow.aboutMe);
-    if (csvRow.skills) contentParts.push(`Skills: ${Array.isArray(csvRow.skills) ? csvRow.skills.join(', ') : csvRow.skills}`);
-    if (csvRow.interests) contentParts.push(`Interests: ${Array.isArray(csvRow.interests) ? csvRow.interests.join(', ') : csvRow.interests}`);
 
     // Build properties
     const properties: any = {
@@ -50,126 +80,36 @@ export class PeopleItemIngester {
       })
     };
 
-    // Add Option B standard properties
+    // Add Option B labeled properties only
     for (const prop of optionBProps) {
+      const label = prop.peopleDataLabel;
+      if (!label) continue;
       const value = csvRow[prop.name];
       if (!value || value === '') continue;
+      const valueType = getLabelValueType(prop.type, label);
 
-      if (prop.type === 'array') {
-        // Array properties need @odata.type annotation
+      if (valueType === 'stringCollection') {
         properties[`${prop.name}@odata.type`] = 'Collection(String)';
+        const arrayValue = normalizeToArray(value);
 
-        // Parse array value if it's a string
-        let arrayValue: any[];
-        if (typeof value === 'string') {
-          try {
-            // Try parsing JSON array
-            const parsed = JSON.parse(value.replace(/'/g, '"'));
-            arrayValue = Array.isArray(parsed) ? parsed : [value];
-          } catch {
-            // Fallback to comma-separated
-            arrayValue = value.split(',').map((v: string) => v.trim());
-          }
-        } else if (Array.isArray(value)) {
-          arrayValue = value;
+        if (label === 'personAnniversaries') {
+          properties[prop.name] = arrayValue.map(serializeAnniversaryItem);
         } else {
-          arrayValue = [value];
+          properties[prop.name] = arrayValue.map(serializeDisplayNameItem);
         }
-
-        // Handle special complex types
-        if (prop.peopleDataLabel === 'personLanguage') {
-          // Languages with proficiency - format: {"displayName":"Norwegian","proficiency":"nativeOrBilingual"}
-          // Supported input formats:
-          //   - JSON: [{"language":"Norwegian","proficiency":"native"}]
-          //   - Colon: ["Norwegian:native"]
-          //   - Parenthetical: ["Italian (Native)", "English (Fluent)"]
-          //   - Plain: ["Norwegian"]
-          properties[prop.name] = arrayValue.map((item: any) => {
-            // Map friendly proficiency names to Microsoft Graph values
-            const mapProficiency = (prof: string): string => {
-              const normalized = prof.toLowerCase().trim();
-              if (normalized.includes('native') || normalized.includes('bilingual')) return 'nativeOrBilingual';
-              if (normalized.includes('fluent') || normalized === 'full' || normalized === 'fullprofessional') return 'fullProfessional';
-              if (normalized.includes('professional') || normalized.includes('working')) return 'professionalWorking';
-              if (normalized.includes('conversational') || normalized.includes('intermediate') || normalized.includes('limited')) return 'limitedWorking';
-              if (normalized.includes('basic') || normalized.includes('beginner') || normalized.includes('elementary')) return 'elementary';
-              return 'professionalWorking'; // default
-            };
-
-            if (typeof item === 'object' && item.language) {
-              // Already parsed object with language/proficiency
-              return JSON.stringify({
-                displayName: item.language,
-                proficiency: mapProficiency(item.proficiency || 'professionalWorking')
-              });
-            } else if (typeof item === 'string') {
-              // Check for parenthetical format: "Italian (Native)"
-              const parenMatch = item.match(/^(.+?)\s*\(([^)]+)\)$/);
-              if (parenMatch) {
-                const [, lang, prof] = parenMatch;
-                return JSON.stringify({
-                  displayName: lang.trim(),
-                  proficiency: mapProficiency(prof)
-                });
-              }
-              // Check for colon format: "Norwegian:native"
-              if (item.includes(':')) {
-                const [lang, prof] = item.split(':').map((s: string) => s.trim());
-                return JSON.stringify({
-                  displayName: lang,
-                  proficiency: mapProficiency(prof)
-                });
-              }
-              // Simple language name without proficiency
-              return JSON.stringify({
-                displayName: String(item).trim(),
-                proficiency: 'professionalWorking'
-              });
-            } else {
-              return JSON.stringify({
-                displayName: String(item),
-                proficiency: 'professionalWorking'
-              });
-            }
-          });
-        } else if (prop.peopleDataLabel) {
-          // Other labeled array properties use: {"displayName":"..."}
-          properties[prop.name] = arrayValue.map((item: string) =>
-            JSON.stringify({ displayName: item })
-          );
-        } else {
-          // Custom properties without labels can be plain strings
-          properties[prop.name] = arrayValue;
-        }
-      } else if (prop.peopleDataLabel === 'personNote') {
-        // personAnnotation entity requires: {"detail":"..."}
-        properties[prop.name] = JSON.stringify({ detail: value });
-      } else if (prop.peopleDataLabel) {
+      } else if (label === 'personNote') {
+        // personAnnotation entity requires: {"detail":{"contentType":"text","content":"..."}}
+        properties[prop.name] = JSON.stringify({
+          detail: { contentType: 'text', content: value }
+        });
+      } else {
         // Other single-value labels (e.g., personWebSite) use: {"displayName":"..."}
         properties[prop.name] = JSON.stringify({ displayName: value });
-      } else {
-        // Custom properties without labels (interests, responsibilities, schools)
-        properties[prop.name] = value;
-      }
-    }
-
-    // Add custom organization properties (VTeam, BenefitPlan, CostCenter, etc.)
-    for (const customProp of customProps) {
-      const value = csvRow[customProp];
-      if (value && value !== '') {
-        properties[customProp] = String(value); // Store as string
-
-        // Add to content for searchability
-        contentParts.push(`${customProp}: ${value}`);
       }
     }
 
     return {
       id: itemId,
-      content: {
-        value: contentParts.join('. '),
-        type: 'text'
-      },
       properties,
       acl: [
         {

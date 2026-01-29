@@ -2,15 +2,29 @@
 /**
  * Hybrid Profile Enrichment
  *
- * Uses the optimal approach for each data type:
- * 1. Profile API (Direct POST) - For standard profile fields:
- *    - skills, languages, notes (aboutMe), interests, certifications, awards, etc.
- * 2. Graph Connectors - For custom organizational properties:
- *    - VTeam, CostCenter, BenefitPlan, BuildingAccess, ProjectCode, etc.
+ * Uses the optimal approach for each data type to maximize Copilot searchability:
  *
- * This hybrid approach provides:
- * - Reliable direct writes for standard profile data
- * - Copilot-searchable custom properties via Graph Connectors
+ * 1. Graph Connectors (people data labels only) - Copilot-searchable:
+ *    - skills (personSkills label)
+ *    - aboutMe/notes (personNote label)
+ *    - certifications, awards, projects, birthday, mySite (labels only)
+ *    - NOTE: Unlabeled/custom fields are ignored in strict-by-doc mode
+ *
+ * 2. Profile API (Direct POST) - Profile cards only (not Copilot-searchable):
+ *    - languages (no connector label available)
+ *    - interests (no connector label available)
+ *    - skills, aboutMe (also written here for profile cards)
+ *
+ * Key insight: Data written via Profile API with delegated auth is stored as
+ * source.type: "User" with isSearchable: false. Only data from system sources
+ * (connectors with people data labels) is Copilot-searchable.
+ *
+ * Available people data labels:
+ *   - personAccount (required for user mapping)
+ *   - personSkills, personNote, personCertifications, personAwards, personProjects
+ *   - personAddresses, personEmails, personPhones
+ *
+ * NOT available: personLanguages, personInterests (platform limitation)
  */
 
 import fs from 'fs/promises';
@@ -21,6 +35,8 @@ import { BrowserAuthServer } from './auth/browser-auth-server.js';
 import { initializeLogger, Logger } from './utils/logger.js';
 import { PeopleConnectionManager } from './people-connector/connection-manager.js';
 import { PeopleItemIngester } from './people-connector/item-ingester.js';
+import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
+import { getOptionBProperties } from './schema/user-property-schema.js';
 import {
   ProfileWriter,
   SkillProficiency,
@@ -57,7 +73,12 @@ interface UserProfile {
   aboutMe?: string;
   interests?: string[];
   languages?: LanguageProficiency[];
-  customProperties: Record<string, string>;
+}
+
+function getLabeledOptionBFieldNames(): string[] {
+  return getOptionBProperties()
+    .filter(prop => prop.peopleDataLabel)
+    .map(prop => prop.name);
 }
 
 class HybridProfileEnrichment {
@@ -78,7 +99,7 @@ class HybridProfileEnrichment {
     const args = process.argv.slice(2);
     const options: EnrichOptions = {
       csvPath: 'config/textcraft-europe.csv',
-      connectionId: 'm365provisionpeople',
+      connectionId: 'm365people3',
       setupConnector: false,
       skipProfileApi: false,
       skipConnector: false,
@@ -116,7 +137,9 @@ class HybridProfileEnrichment {
    */
   async loadProfiles(csvPath: string): Promise<{
     profiles: UserProfile[];
-    customFields: string[];
+    connectorRows: any[];
+    csvColumns: string[];
+    ignoredFields: string[];
   }> {
     const content = await fs.readFile(csvPath, 'utf-8');
     const records = parse(content, {
@@ -126,17 +149,16 @@ class HybridProfileEnrichment {
     });
 
     const csvColumns = records.length > 0 ? Object.keys(records[0]) : [];
-
-    // Identify custom fields (not standard user fields, not Profile API fields)
-    const customFields = csvColumns.filter(col =>
+    const labeledOptionBFields = new Set(getLabeledOptionBFieldNames());
+    const ignoredFields = csvColumns.filter(col =>
       !STANDARD_USER_FIELDS.has(col) &&
-      !PROFILE_API_FIELDS.includes(col)
+      !PROFILE_API_FIELDS.includes(col) &&
+      !labeledOptionBFields.has(col)
     );
 
     const profiles: UserProfile[] = records.map((row: any) => {
       const profile: UserProfile = {
         email: row.email,
-        customProperties: {},
       };
 
       // Parse Profile API fields
@@ -153,17 +175,10 @@ class HybridProfileEnrichment {
         profile.languages = ProfileWriter.parseLanguages(row.languages);
       }
 
-      // Collect custom properties for Graph Connector
-      for (const field of customFields) {
-        if (row[field] && row[field] !== '') {
-          profile.customProperties[field] = String(row[field]);
-        }
-      }
-
       return profile;
     });
 
-    return { profiles, customFields };
+    return { profiles, connectorRows: records, csvColumns, ignoredFields };
   }
 
   private parseArrayValue(value: string): string[] {
@@ -276,46 +291,58 @@ class HybridProfileEnrichment {
    * Enrich via Graph Connectors (app-only auth)
    */
   async enrichViaConnector(
-    profiles: UserProfile[],
-    customFields: string[],
+    connectorRows: any[],
+    csvColumns: string[],
+    ignoredFields: string[],
     options: EnrichOptions,
     graphClient: GraphClient,
     logger: Logger
   ): Promise<{ successful: number; failed: number }> {
     console.log('\n' + '='.repeat(60));
-    console.log('PHASE 2: Graph Connectors (Custom Properties)');
+    console.log('PHASE 2: Graph Connectors (Copilot-Searchable Data)');
     console.log('='.repeat(60));
-    console.log(`Writing: ${customFields.join(', ')}\n`);
+    console.log('Writing people-labeled properties only (strict-by-doc).');
+    const labeledOptionBFields = getLabeledOptionBFieldNames();
+    const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
+    if (connectorFields.length > 0) {
+      console.log(`  - Connector fields: ${connectorFields.join(', ')}`);
+    } else {
+      console.log('  - Connector fields: (none detected in CSV)');
+    }
+    if (ignoredFields.length > 0) {
+      console.log(`  - Ignored (no people label): ${ignoredFields.join(', ')}`);
+    }
+    console.log('');
 
-    const { client, betaClient } = graphClient.getClients();
-    const connectionManager = new PeopleConnectionManager(client, betaClient, options.connectionId);
+    const { betaClient } = graphClient.getClients();
+    const connectionManager = new PeopleConnectionManager(betaClient, options.connectionId);
 
     // Setup connector if requested
     if (options.setupConnector) {
       console.log('Setting up Graph Connector...');
 
       await connectionManager.createConnection(
-        'M365 Custom Properties',
-        'Custom organizational properties for Copilot search'
+        'M365 People Enrichment',
+        'People data enrichment for Copilot search (labeled properties only)'
       );
 
-      // Register as profile source
+      // Register schema with people data labels only
+      const schema = PeopleSchemaBuilder.buildPeopleSchema();
+      console.log(`Schema includes ${schema.length} labeled properties (personAccount + ${schema.length - 1} people labels).`);
+      await connectionManager.registerSchema(schema);
+
+      // Register as profile source after schema is ready
       const userDomain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
       const webUrl = `https://${userDomain.replace('.onmicrosoft.com', '.sharepoint.com')}`;
       await connectionManager.registerAsProfileSource('M365 Agent Provisioning', webUrl);
-
-      // Register schema with only custom properties
-      const schema = this.buildCustomPropertiesSchema(customFields);
-      console.log(`Schema includes ${schema.length - 1} custom properties`);
-      await connectionManager.registerSchema(schema);
     }
 
-    const itemIngester = new PeopleItemIngester(client, betaClient, options.connectionId, logger);
+    const itemIngester = new PeopleItemIngester(betaClient, options.connectionId, logger);
 
-    // Create external items with only custom properties
-    const items = profiles
-      .filter(p => Object.keys(p.customProperties).length > 0)
-      .map(p => this.createCustomPropertyItem(p, customFields));
+    // Create external items for profiles with labeled data
+    const items = connectorRows
+      .filter(row => labeledOptionBFields.some(field => row[field] && row[field] !== ''))
+      .map(row => itemIngester.createExternalItem(row));
 
     if (options.dryRun) {
       console.log('\nDry Run - Sample Item:');
@@ -333,74 +360,6 @@ class HybridProfileEnrichment {
     return { successful: successful.length, failed: failed.length };
   }
 
-  /**
-   * Build schema for custom properties only
-   */
-  private buildCustomPropertiesSchema(customFields: string[]): any[] {
-    const schema: any[] = [
-      // Required: Link to Entra ID user
-      {
-        name: 'accountInformation',
-        type: 'String',
-        isSearchable: false,
-        isRetrievable: true,
-        labels: ['userAccountInformation'],
-      },
-    ];
-
-    // Add custom properties
-    for (const field of customFields) {
-      schema.push({
-        name: field,
-        type: 'String',
-        isSearchable: true,
-        isRetrievable: true,
-        isQueryable: true,
-      });
-    }
-
-    return schema;
-  }
-
-  /**
-   * Create external item with only custom properties
-   */
-  private createCustomPropertyItem(profile: UserProfile, customFields: string[]): any {
-    const itemId = `person-${profile.email.replace(/@/g, '-').replace(/\./g, '-')}`;
-
-    const properties: any = {
-      accountInformation: JSON.stringify({
-        userPrincipalName: profile.email,
-      }),
-    };
-
-    const contentParts: string[] = [];
-
-    for (const field of customFields) {
-      const value = profile.customProperties[field];
-      if (value) {
-        properties[field] = value;
-        contentParts.push(`${field}: ${value}`);
-      }
-    }
-
-    return {
-      id: itemId,
-      content: {
-        value: contentParts.join('. '),
-        type: 'text',
-      },
-      properties,
-      acl: [
-        {
-          type: 'everyone',
-          value: 'everyone',
-          accessType: 'grant',
-        },
-      ],
-    };
-  }
-
   async run(): Promise<void> {
     const options = this.parseArgs();
 
@@ -413,6 +372,8 @@ class HybridProfileEnrichment {
     console.log(`  Skip Connector: ${options.skipConnector ? 'Yes' : 'No'}`);
     console.log(`  Dry Run: ${options.dryRun ? 'Yes' : 'No'}`);
     console.log('');
+    console.log('Note: Run Option A provisioning before Option B enrichment.');
+    console.log('');
 
     // Verify CSV exists
     try {
@@ -424,10 +385,16 @@ class HybridProfileEnrichment {
 
     // Load profiles
     console.log('Loading profiles from CSV...');
-    const { profiles, customFields } = await this.loadProfiles(options.csvPath);
+    const { profiles, connectorRows, csvColumns, ignoredFields } = await this.loadProfiles(options.csvPath);
     console.log(`Loaded ${profiles.length} profiles`);
-    console.log(`Profile API fields: ${PROFILE_API_FIELDS.join(', ')}`);
-    console.log(`Custom fields for Connector: ${customFields.join(', ')}`);
+    const labeledOptionBFields = getLabeledOptionBFieldNames();
+    const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
+    console.log('Field routing:');
+    console.log('  Profile API only (cards): languages, interests');
+    console.log(`  Connector (people labels): ${connectorFields.join(', ') || '(none detected)'}`);
+    if (ignoredFields.length > 0) {
+      console.log(`  Ignored (no people label): ${ignoredFields.join(', ')}`);
+    }
     console.log('');
 
     this.logger = await initializeLogger('logs');
@@ -455,39 +422,42 @@ class HybridProfileEnrichment {
     }
 
     // Phase 2: Graph Connectors (requires app-only auth)
-    if (!options.skipConnector && customFields.length > 0) {
+    // Always run for labeled people data (Copilot-searchable)
+    if (!options.skipConnector) {
       const clientSecret = process.env.AZURE_CLIENT_SECRET;
       if (!clientSecret) {
-        console.log('\nSkipping Graph Connector: AZURE_CLIENT_SECRET not configured');
-      } else {
-        console.log('\nAuthenticating for Graph Connectors (app-only)...');
-        const graphClient = new GraphClient({
-          tenantId: this.tenantId,
-          clientId: this.clientId,
-          clientSecret,
-        });
-        console.log('Authenticated\n');
-
-        connectorResults = await this.enrichViaConnector(
-          profiles,
-          customFields,
-          options,
-          graphClient,
-          this.logger
-        );
+        throw new Error('AZURE_CLIENT_SECRET is required for Graph Connector ingestion (app-only auth).');
       }
+      console.log('\nAuthenticating for Graph Connectors (app-only)...');
+      const graphClient = new GraphClient({
+        tenantId: this.tenantId,
+        clientId: this.clientId,
+        clientSecret,
+      });
+      console.log('Authenticated\n');
+
+      connectorResults = await this.enrichViaConnector(
+        connectorRows,
+        csvColumns,
+        ignoredFields,
+        options,
+        graphClient,
+        this.logger
+      );
     }
 
     // Final Summary
     console.log('\n' + '='.repeat(60));
     console.log('ENRICHMENT SUMMARY');
     console.log('='.repeat(60));
-    console.log('\nProfile API (skills, languages, notes, interests):');
+    console.log('\nProfile API (languages, interests - profile cards only):');
     console.log(`  Successful: ${profileApiResults.successful}`);
     console.log(`  Failed: ${profileApiResults.failed}`);
-    console.log('\nGraph Connectors (custom properties):');
+    console.log('\nGraph Connectors (people-labeled props only - Copilot-searchable):');
     console.log(`  Successful: ${connectorResults.successful}`);
     console.log(`  Failed: ${connectorResults.failed}`);
+    console.log('\nNote: Languages/interests have no people data labels, so they remain');
+    console.log('Profile API only (visible on cards, not Copilot-searchable).');
     console.log('='.repeat(60));
 
     await this.logger.close();

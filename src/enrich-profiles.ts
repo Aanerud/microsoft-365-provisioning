@@ -4,7 +4,6 @@ import fs from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import dotenv from 'dotenv';
 import { GraphClient } from './graph-client.js';
-import { BrowserAuthServer } from './auth/browser-auth-server.js';
 import { initializeLogger } from './utils/logger.js';
 import { PeopleConnectionManager } from './people-connector/connection-manager.js';
 import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
@@ -118,48 +117,33 @@ class ProfileEnrichment {
     console.log(`  Connection ID: ${options.connectionId}`);
     console.log(`  Dry Run: ${options.dryRun ? 'Yes' : 'No'}`);
     console.log('');
+    console.log('Note: Run Option A provisioning before Option B enrichment.');
+    console.log('');
 
     // Check authentication method
     const clientSecret = process.env.AZURE_CLIENT_SECRET;
 
-    if (clientSecret) {
-      // Use OAuth 2.0 Client Credentials Flow (app-only)
-      console.log('🔐 Using application-only authentication (OAuth 2.0 client credentials)...');
-      this.graphClient = new GraphClient({
-        tenantId: this.tenantId,
-        clientId: this.clientId,
-        clientSecret: clientSecret
-      });
-      console.log('✓ Authenticated with client credentials\n');
-    } else {
-      // Use OAuth 2.0 Authorization Code Flow (delegated)
-      console.log('🔐 Authenticating with browser (OAuth 2.0 delegated)...');
-      const authServer = new BrowserAuthServer({
-        tenantId: this.tenantId,
-        clientId: this.clientId,
-        scopes: [
-          'User.Read.All',
-          'Directory.Read.All',
-          'ExternalConnection.ReadWrite.All',
-          'ExternalItem.ReadWrite.All'
-        ]
-      });
-      const authResult = await authServer.authenticate();
-      this.graphClient = new GraphClient({ accessToken: authResult.accessToken });
-      console.log('✓ Authenticated\n');
+    if (!clientSecret) {
+      throw new Error('AZURE_CLIENT_SECRET is required for Graph Connector ingestion (app-only auth).');
     }
 
+    // Use OAuth 2.0 Client Credentials Flow (app-only)
+    console.log('🔐 Using application-only authentication (OAuth 2.0 client credentials)...');
+    this.graphClient = new GraphClient({
+      tenantId: this.tenantId,
+      clientId: this.clientId,
+      clientSecret: clientSecret
+    });
+    console.log('✓ Authenticated with client credentials\n');
+
     // Initialize clients
-    const { client, betaClient } = this.graphClient.getClients();
-    this.connectionManager = new PeopleConnectionManager(client, betaClient, options.connectionId);
+    const { betaClient } = this.graphClient.getClients();
+    this.connectionManager = new PeopleConnectionManager(betaClient, options.connectionId);
 
     // Load people data first to get CSV columns
     console.log('📖 Loading people data from CSV...');
     const peopleData = await this.loadPeopleData(options.csvPath);
     console.log(`✓ Loaded ${peopleData.length} people\n`);
-
-    // Get CSV columns for schema building
-    const csvColumns = peopleData.length > 0 ? Object.keys(peopleData[0]) : [];
 
     // Setup connection if requested
     if (options.createConnection || options.registerSchema) {
@@ -171,7 +155,14 @@ class ProfileEnrichment {
           'People data enrichment from M365-Agent-Provisioning'
         );
 
-        // Register as profile source to fix "unknownFutureValue" label issue
+      }
+
+      if (options.registerSchema) {
+        const schema = PeopleSchemaBuilder.buildPeopleSchema();
+        console.log(`  Schema includes ${schema.length} labeled properties (personAccount + ${schema.length - 1} people labels)`);
+        await this.connectionManager.registerSchema(schema);
+
+        // Register as profile source after schema is ready
         // This requires PeopleSettings.ReadWrite.All application permission
         const userDomain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
         const webUrl = `https://${userDomain.replace('.onmicrosoft.com', '.sharepoint.com')}`;
@@ -180,20 +171,14 @@ class ProfileEnrichment {
           webUrl
         );
       }
-
-      if (options.registerSchema) {
-        const schema = PeopleSchemaBuilder.buildPeopleSchema(csvColumns);
-        console.log(`  Schema includes ${schema.length - 1} properties (${schema.filter(p => p.labels).length - 1} with labels, ${schema.filter(p => !p.labels && p.name !== 'accountInformation').length} custom)`);
-        await this.connectionManager.registerSchema(schema);
-      }
     }
 
     const logger = await initializeLogger('logs');
-    this.itemIngester = new PeopleItemIngester(client, betaClient, options.connectionId, logger);
+    this.itemIngester = new PeopleItemIngester(betaClient, options.connectionId, logger);
 
     // Create external items
     console.log('🔨 Creating external items...');
-    const items = peopleData.map(person => this.itemIngester!.createExternalItem(person, csvColumns));
+    const items = peopleData.map(person => this.itemIngester!.createExternalItem(person));
 
     if (options.dryRun) {
       console.log('\n📄 Dry Run - Sample Item:');
