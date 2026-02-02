@@ -56,14 +56,11 @@ See **[PEOPLE-DATA-AUTH-SOLUTION.md](./PEOPLE-DATA-AUTH-SOLUTION.md)** for compl
 ## Testing & Migration
 
 - **[OPTION-A-TEST-PLAN.md](./OPTION-A-TEST-PLAN.md)**: Testing strategy for Option A
-- **[OPTION-B-TEST-RESULTS.md](./OPTION-B-TEST-RESULTS.md)**: Option B test results (historical)
 - **[MSAL-MIGRATION.md](./MSAL-MIGRATION.md)**: Migration from client secret to MSAL (Option A)
 
 ## Additional Resources
 
-- **[GRAPH-CONNECTOR-PERMISSIONS.md](./GRAPH-CONNECTOR-PERMISSIONS.md)**: Permissions reference
-- **[CURRENT-STATE-SUMMARY.md](./CURRENT-STATE-SUMMARY.md)**: Project status summary
-- **[TEST-RESULTS-2026-01-22.md](./TEST-RESULTS-2026-01-22.md)**: Latest test results
+- **[COPILOT-CONNECTORS-PEOPLE-DATA.md](./COPILOT-CONNECTORS-PEOPLE-DATA.md)**: People data connector deep dive
 
 ## Documentation Structure
 
@@ -91,9 +88,7 @@ docs/
 │
 └── Historical
     ├── MSAL-MIGRATION.md
-    ├── OPTION-A-TEST-PLAN.md
-    ├── OPTION-B-TEST-RESULTS.md
-    └── TEST-RESULTS-2026-01-22.md
+    └── OPTION-A-TEST-PLAN.md
 ```
 
 ## Common Workflows
