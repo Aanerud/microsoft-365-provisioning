@@ -49,8 +49,20 @@ CSV Data
 | Data Type | Method | Why |
 |-----------|--------|-----|
 | **Standard User Fields** | Option A (Entra ID) | Native identity management |
-| **Profile Fields** (skills, languages, notes) | Profile API | Direct POST, reliable, no connector overhead |
+| **Profile Fields** (languages, interests) | Profile API only | No people data labels exist for Copilot |
+| **Profile Fields** (skills, aboutMe) | Profile API + Connectors | Redundant for both profile cards AND Copilot search |
 | **Custom Org Fields** (VTeam, CostCenter) | Graph Connectors | Only way to add custom searchable properties |
+
+### Graph Connectors for Copilot Searchability
+
+Graph Connectors with **people data labels** enable Copilot to search for people based on their skills, notes, and custom properties. Key requirements:
+- Connection must have `contentCategory: 'people'`
+- Schema must use `personAccount` label (required for user mapping)
+- Schema can use `personSkills`, `personNote`, `personCertifications`, etc.
+- Items must have ACL set to `everyone`/`grant`
+- Wait 6+ hours after ingestion for Microsoft 365 to index
+
+See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` for complete details.
 
 ### Profile API Collections (20 Total)
 
@@ -193,8 +205,9 @@ M365-Agent-Provisioning/
 | `src/enrich-profiles-hybrid.ts` | Main enrichment - Profile API + Connectors |
 | `src/profile-writer.ts` | Profile API writer (skills, languages, notes, etc.) |
 | `src/provision.ts` | User provisioning (Option A) |
+| `src/people-connector/connection-manager.ts` | Graph Connector connection + profile source registration |
 | `src/people-connector/item-ingester.ts` | Graph Connector item ingestion |
-| `src/schema/user-property-schema.ts` | Property definitions with profileApiEndpoint |
+| `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` | **Deep understanding of people data connectors** |
 
 ## Common Workflows
 
@@ -257,5 +270,5 @@ The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 ta
 
 ---
 
-**Last Updated**: 2026-01-25
-**Version**: 3.0.0 (Hybrid Profile API + Graph Connectors)
+**Last Updated**: 2026-01-27
+**Version**: 3.2.0 (Fixed beta API requirement for people data connectors)

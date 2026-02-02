@@ -9,6 +9,7 @@ import { PeopleConnectionManager } from './people-connector/connection-manager.j
 import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
 import { PeopleItemIngester } from './people-connector/item-ingester.js';
 import { parsePropertyValue } from './schema/user-property-schema.js';
+import { applyOidCacheToRows, ensureOidCacheWithAuth } from './oid-cache.js';
 
 dotenv.config();
 
@@ -144,6 +145,18 @@ class ProfileEnrichment {
     console.log('📖 Loading people data from CSV...');
     const peopleData = await this.loadPeopleData(options.csvPath);
     console.log(`✓ Loaded ${peopleData.length} people\n`);
+
+    const oidCacheResult = await ensureOidCacheWithAuth({
+      csvPath: options.csvPath,
+      tenantId: this.tenantId,
+      clientId: this.clientId,
+      authPort: parseInt(process.env.AUTH_SERVER_PORT || '5544', 10),
+    });
+    console.log(`🧭 OID cache: ${oidCacheResult.rebuilt ? 'built' : 'loaded'} (${oidCacheResult.cachePath})`);
+    const oidSummary = applyOidCacheToRows(peopleData, oidCacheResult.cache);
+    console.log(
+      `🔗 OID mapping: ${oidSummary.hits} matched, ${oidSummary.misses} missing, ${oidSummary.existing} prefilled\n`
+    );
 
     // Setup connection if requested
     if (options.createConnection || options.registerSchema) {

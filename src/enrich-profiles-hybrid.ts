@@ -37,6 +37,7 @@ import { PeopleConnectionManager } from './people-connector/connection-manager.j
 import { PeopleItemIngester } from './people-connector/item-ingester.js';
 import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
 import { getOptionBProperties } from './schema/user-property-schema.js';
+import { applyOidCacheToRows, ensureOidCacheWithAuth, ensureOidCacheWithClient } from './oid-cache.js';
 import {
   ProfileWriter,
   SkillProficiency,
@@ -401,6 +402,7 @@ class HybridProfileEnrichment {
 
     let profileApiResults = { successful: 0, failed: 0 };
     let connectorResults = { successful: 0, failed: 0 };
+    let delegatedAccessToken: string | null = null;
 
     // Phase 1: Profile API (requires delegated auth)
     if (!options.skipProfileApi) {
@@ -413,6 +415,7 @@ class HybridProfileEnrichment {
       });
       const authResult = await authServer.authenticate();
       console.log('Authenticated\n');
+      delegatedAccessToken = authResult.accessToken;
 
       profileApiResults = await this.enrichViaProfileApi(
         profiles,
@@ -424,6 +427,28 @@ class HybridProfileEnrichment {
     // Phase 2: Graph Connectors (requires app-only auth)
     // Always run for labeled people data (Copilot-searchable)
     if (!options.skipConnector) {
+      let oidCacheResult;
+      if (delegatedAccessToken) {
+        const delegatedClient = new GraphClient({ accessToken: delegatedAccessToken, useBeta: true });
+        oidCacheResult = await ensureOidCacheWithClient({
+          csvPath: options.csvPath,
+          tenantId: this.tenantId,
+          graphClient: delegatedClient,
+        });
+      } else {
+        oidCacheResult = await ensureOidCacheWithAuth({
+          csvPath: options.csvPath,
+          tenantId: this.tenantId,
+          clientId: this.clientId,
+          authPort: parseInt(process.env.AUTH_SERVER_PORT || '5544', 10),
+        });
+      }
+      console.log(`🧭 OID cache: ${oidCacheResult.rebuilt ? 'built' : 'loaded'} (${oidCacheResult.cachePath})`);
+      const oidSummary = applyOidCacheToRows(connectorRows, oidCacheResult.cache);
+      console.log(
+        `🔗 OID mapping: ${oidSummary.hits} matched, ${oidSummary.misses} missing, ${oidSummary.existing} prefilled\n`
+      );
+
       const clientSecret = process.env.AZURE_CLIENT_SECRET;
       if (!clientSecret) {
         throw new Error('AZURE_CLIENT_SECRET is required for Graph Connector ingestion (app-only auth).');

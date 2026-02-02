@@ -11,20 +11,20 @@
 - ✅ **State Management** - CREATE/UPDATE/DELETE with CSV as source of truth
 - ✅ **Batch Operations** - Efficient processing (20 users per batch)
 - ✅ **Manager Relationships** - Organizational hierarchy support
-- ✅ **Custom Properties** - Open extensions for unlimited custom fields
+- ✅ **Custom Properties** - Deferred to Option B (Graph Connector)
 - ✅ **Account Protection** - Multi-layer safety (pattern matching, role detection, exclusion list)
 - ✅ **Comprehensive Logging** - Both console and file logging with error tracking
 - ✅ **License Assignment** - Automatic M365 license assignment (with error logging)
 
 **Supported Properties** (50+ standard properties):
-- **Basic**: displayName, givenName, surname, accountEnabled, aboutMe
+- **Basic**: displayName, givenName, surname, accountEnabled
 - **Contact**: mail, mobilePhone, businessPhones, faxNumber, otherMails
 - **Address**: streetAddress, city, state, country, postalCode, officeLocation
 - **Job**: jobTitle, department, employeeId, employeeType, companyName, employeeHireDate
 - **Identity**: userPrincipalName, userType
 - **Preferences**: usageLocation, preferredLanguage, preferredDataLocation
 - **Manager**: manager (navigation property)
-- **Custom**: Unlimited via open extensions
+- **Custom**: Deferred to Option B connector schema
 
 **Current CSV** (20 Norwegian users):
 - **File**: `config/agents-template.csv`
@@ -63,13 +63,13 @@ npm run provision -- --use-beta      # Enable beta API features
 
 ## What's Pending ⏳
 
-### Option B: Profile Enrichment (Not Yet Implemented)
+### Option B: Profile Enrichment (Implemented)
 
-**Purpose**: Add rich profile data that cannot be set via batch operations
+**Purpose**: Add rich profile data via Graph Connector people data labels
 
-**File**: `src/enrich-profiles.ts` (TO BE CREATED)
+**File**: `src/enrich-profiles.ts`
 
-**Properties to Support**:
+**Properties Supported**:
 - Personal bio: `aboutMe`
 - Skills: `skills` (array)
 - Interests: `interests` (array)
@@ -78,17 +78,11 @@ npm run provision -- --use-beta      # Enable beta API features
 - Education: `schools` (array)
 - Website: `mySite`
 - Birthday: `birthday`
-- Additional contact: `otherMails`, `faxNumber`
 
 **Why Separate?**:
-These properties **cannot be set via batch operations** (Microsoft Graph API limitation). They require individual `PATCH /users/{id}` requests.
+These properties should flow through the connector so they surface in Copilot/Search.
 
-**Performance Impact**:
-- 100 users × 8 properties = 800 API calls
-- vs Option A: 5 batch calls for 100 users
-- ~160x more API calls
-
-**Future Commands**:
+**Commands**:
 ```bash
 npm run enrich-profiles                          # Enrich all users
 npm run enrich-profiles -- --csv profiles.csv    # From CSV
@@ -120,7 +114,7 @@ npm run enrich-profiles -- --users email1,email2 # Specific users
    - Creates/updates 20 users
    - Sets manager relationships
    - Assigns licenses
-   - Creates custom properties
+   - Defers custom properties to Option B
    - Complete organizational hierarchy
 
 2. **State Management**:
@@ -136,14 +130,13 @@ npm run enrich-profiles -- --users email1,email2 # Specific users
    - Error tracking
 
 4. **Custom Properties**:
-   - Unlimited custom fields via open extensions
+   - Deferred to Option B connector schema
    - Example: VTeam, BenefitPlan, CostCenter, BuildingAccess, ProjectCode
 
 ### What You CANNOT Do Yet
 
 1. **Profile Enrichment** (Option B):
-   - Set skills, interests, pastProjects, etc.
-   - Requires Option B implementation
+   - Connector ingestion still requires indexing time (6+ hours)
 
 2. **Rich Profile Resources** (Option C - Future):
    - Skills with proficiency levels
@@ -163,7 +156,7 @@ M365-Agent-Provisioning/
 │   ├── schema/
 │   │   └── user-property-schema.ts     # ✅ Complete property schema (50+)
 │   ├── extensions/
-│   │   └── open-extension-manager.ts   # ✅ Custom properties
+│   │   └── open-extension-manager.ts   # ⚠️ Legacy reference (not used by Option A)
 │   ├── safety/
 │   │   └── account-protection.ts       # ✅ Account protection
 │   ├── utils/
@@ -171,7 +164,7 @@ M365-Agent-Provisioning/
 │   ├── auth/
 │   │   ├── browser-auth-server.ts      # ✅ Device code auth
 │   │   └── token-cache.ts              # ✅ Token management
-│   └── enrich-profiles.ts              # ⏳ TO BE CREATED (Option B)
+│   └── enrich-profiles.ts              # ✅ Graph Connector ingestion (Option B)
 ├── config/
 │   ├── agents-template.csv             # ✅ 20 Norwegian users (Option A)
 │   └── agents-test-maxprops.csv        # ✅ 3 test users (testing)

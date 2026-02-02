@@ -19,10 +19,10 @@ export interface AgentConfig {
   // State tracking fields
   lastAction?: 'CREATE' | 'UPDATE' | 'DELETE' | 'NO_CHANGE';
   lastModified?: string;  // ISO timestamp
-  changedFields?: string[];  // Fields that changed in last run (includes custom properties)
+  changedFields?: string[];  // Fields that changed in last run (Option A fields only)
   // All standard properties from schema (dynamic)
   [key: string]: any;
-  // Custom properties (from open extensions)
+  // Custom properties (Option B connector - not populated by Option A)
   customProperties?: Record<string, any>;
 }
 

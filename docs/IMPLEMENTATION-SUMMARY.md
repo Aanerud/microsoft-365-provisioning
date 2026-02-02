@@ -37,7 +37,7 @@ Option B enriches Microsoft 365 user profiles using **Microsoft Graph Connectors
 
 ### Key Files Modified
 
-1. **src/provision.ts** - Removed open extensions, added deferred property logging
+1. **src/provision.ts** - Removed open extension writes, added deferred property logging
 2. **src/state-manager.ts** - Skip Option B properties in state management
 3. **package.json** - Added enrich-profiles scripts
 
@@ -216,11 +216,11 @@ Each person becomes an external item:
 
 **Result**:
 - Tested and working
-- Properties stored successfully
 - BUT: Doesn't support People Data labels
 - Data doesn't surface in Copilot
+- **Deprecated**: Replaced by Graph Connectors for unified enrichment
 
-**Verdict**: Rejected in favor of unified Graph Connector approach
+**Verdict**: Rejected in favor of the unified Graph Connector approach
 
 ### ✅ Graph Connectors (Final Solution)
 

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "build-oid-cache": "npm run build && node dist/build-oid-cache.js",
     "provision": "npm run build && node dist/provision.js",
     "provision:beta": "npm run build && node dist/provision.js --use-beta",
     "enrich": "npm run build && node dist/enrich-profiles-hybrid.js",

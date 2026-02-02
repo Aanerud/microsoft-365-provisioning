@@ -23,6 +23,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# OID cache files
+*_oid_cache.json
+
 # Claude Code settings (contains local paths)
 .claude/
 
@@ -42,6 +45,7 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+debug/
 
 # Token cache (stored in home directory, but just in case)
 token-cache.json

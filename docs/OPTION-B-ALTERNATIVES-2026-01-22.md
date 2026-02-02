@@ -84,7 +84,7 @@ POST /users/{id}/profile/skills
 - More complex than direct PATCH
 
 ### 4. Open Extensions
-**Status**: ✅ Working (already implemented)
+**Status**: ⚠️ Deprecated (superseded by Option B connector)
 
 ```
 POST /users/{id}/extensions

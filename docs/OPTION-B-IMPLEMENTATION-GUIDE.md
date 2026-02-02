@@ -98,12 +98,24 @@ Extra CSV columns without people data labels are ignored in strict-by-doc mode.
 
 Users must exist in Entra ID before enriching their profiles. Option B links external items to Entra ID users via `userPrincipalName`.
 
+To avoid backend OID lookups, Option A now builds an **OID cache** that maps `userPrincipalName` → `externalDirectoryObjectId`. Option B loads this cache automatically (and will prompt for delegated sign-in to create it if missing).
+
 ```bash
 # First: Create users
 npm run provision -- --csv config/textcraft-europe.csv
 
 # Then: Enrich profiles
 npm run enrich-profiles -- --csv config/textcraft-europe.csv
+```
+
+**OID cache file**:
+```
+config/textcraft-europe_oid_cache.json
+```
+
+You can build it manually if needed:
+```bash
+npm run build-oid-cache -- --csv config/textcraft-europe.csv
 ```
 
 ### 2. Azure AD Configuration
@@ -187,7 +199,7 @@ npm run enrich-profiles -- --csv config/textcraft-europe.csv
 3. Loads CSV and parses enrichment properties
 4. Creates external items for each person
 5. Ingests items to Graph Connector (using beta endpoint)
-6. Links items to Entra ID users via email address
+6. Links items to Entra ID users via email address and cached OID (if available)
 7. Automatically detects and deletes orphaned items (items not in CSV)
 
 **Output**:

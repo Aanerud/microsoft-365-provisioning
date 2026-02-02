@@ -41,7 +41,7 @@ Created test CSV (`config/agents-test-enrichment.csv`) with:
 
 **Key Verification**:
 - ✅ No mention of "Creating custom property extensions"
-- ✅ Open extensions completely removed
+- ✅ Open extension usage removed from Option A (custom properties handled by Option B)
 - ✅ Clear instructions to use Option B
 - ✅ Properties correctly classified with people data labels
 
@@ -191,7 +191,7 @@ Expected output:
 - Assigns licenses
 - Assigns manager relationships
 - **Does NOT** create open extensions
-- **Does NOT** handle custom properties
+- **Does NOT** handle custom properties (Option B only)
 
 **What it logs**:
 - Shows deferred properties (Option B)

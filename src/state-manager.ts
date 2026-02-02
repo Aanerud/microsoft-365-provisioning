@@ -8,7 +8,7 @@
  * - CREATE: Users in CSV but not in Azure AD
  * - UPDATE: Users in both with differing attributes
  * - DELETE: Users in Azure AD but not in CSV
- * - State comparison and change detection for all 50+ properties + custom fields
+ * - State comparison and change detection for all 50+ Option A properties + custom columns (Option B)
  */
 
 import { GraphClient } from './graph-client.js';

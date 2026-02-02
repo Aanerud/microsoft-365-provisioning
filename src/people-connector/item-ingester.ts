@@ -73,11 +73,16 @@ export class PeopleItemIngester {
     const optionBProps = getOptionBProperties();
 
     // Build properties
+    const accountInformation: Record<string, string> = {
+      userPrincipalName: email,
+    };
+    if (csvRow.externalDirectoryObjectId) {
+      accountInformation.externalDirectoryObjectId = String(csvRow.externalDirectoryObjectId);
+    }
+
     const properties: any = {
       // REQUIRED: Link to Entra ID user
-      accountInformation: JSON.stringify({
-        userPrincipalName: email
-      })
+      accountInformation: JSON.stringify(accountInformation)
     };
 
     // Add Option B labeled properties only

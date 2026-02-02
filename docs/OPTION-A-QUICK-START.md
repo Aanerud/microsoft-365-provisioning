@@ -2,22 +2,23 @@
 
 ## What We're Testing
 
-We're pushing the standard `/users` endpoint to its limits by testing **15 new properties** that haven't been used yet:
+We're pushing the standard `/users` endpoint to its limits by testing **Option A properties only** (no Option B enrichment fields):
 
 ### Properties Being Tested
-- **Arrays**: `skills`, `interests`, `pastProjects`, `responsibilities`, `schools`, `otherMails`
-- **Strings**: `aboutMe`, `mySite`, `faxNumber`
-- **Date**: `birthday`
+- **Arrays**: `otherMails`
+- **Strings**: `faxNumber`
 - **Preferences**: `preferredDataLocation`
+
+> Option B owns personal enrichment fields like `skills`, `aboutMe`, `interests`, and `languages`.
 
 ## Test Dataset
 
 **File**: `config/agents-test-maxprops.csv`
 
 **Users**: 3 test users with comprehensive profiles:
-- **Test User Alpha** - Engineer with tech skills, open source interests
-- **Test User Beta** - UX Designer with design skills, creative interests
-- **Test User Gamma** - Financial Analyst with data skills, economics interests
+- **Test User Alpha** - Engineer with standard properties only
+- **Test User Beta** - UX Designer with standard properties only
+- **Test User Gamma** - Financial Analyst with standard properties only
 
 ## Run the Test
 
@@ -44,13 +45,11 @@ npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
 Summary:
 - Total in CSV: 3 users
 - To CREATE: 3 users
-- Custom properties detected: 3 (VTeam, BenefitPlan, ...)
+- Custom columns detected: 3 (VTeam, BenefitPlan, ... — ignored by Option A)
 
 📦 Applying changes...
   Creating 3 users...
   ✓ Created 3 users
-  Creating 3 open extensions...
-  ✓ Created 3 open extensions
   Assigning 2 manager relationships...
   ✓ Assigned 2 managers
 
@@ -62,11 +61,8 @@ Summary:
 1. Go to [Azure AD Portal](https://portal.azure.com/#view/Microsoft_AAD_UsersAndTenants/UserManagementMenuBlade/~/AllUsers)
 2. Search for "Test User Alpha"
 3. Check profile:
-   - **About me** section should show the bio
-   - **Skills** section should show array of skills
-   - **Interests** should be populated
-   - **Birthday** should show the date
-   - **Personal website** should show the URL
+   - **Other emails** should show the array values
+   - **Fax number** should show the string
    - **Manager** should show Ingrid Johansen
 
 ### Step 4: Verify via Graph API
@@ -74,51 +70,14 @@ Summary:
 Use Graph Explorer or curl:
 
 ```bash
-# Get all personal properties for Test User Alpha
+# Get Option A properties for Test User Alpha
 GET https://graph.microsoft.com/beta/users/test.alpha@a830edad9050849coep9vqp9bog.onmicrosoft.com
-?$select=aboutMe,skills,interests,pastProjects,responsibilities,schools,mySite,birthday,otherMails,faxNumber,preferredDataLocation
+?$select=otherMails,faxNumber,preferredDataLocation
 ```
 
 **Expected response**:
 ```json
 {
-  "aboutMe": "Experienced engineer specializing in...",
-  "skills": [
-    "TypeScript",
-    "Python",
-    "Azure",
-    "Kubernetes",
-    "DevOps",
-    "CI/CD",
-    "Docker",
-    "Terraform"
-  ],
-  "interests": [
-    "Open Source",
-    "Cloud Computing",
-    "AI/ML",
-    "Mountain Hiking",
-    "Photography",
-    "Tech Blogging"
-  ],
-  "pastProjects": [
-    "Cloud Migration Initiative",
-    "Kubernetes Platform Build",
-    "CI/CD Pipeline Automation",
-    "Microservices Architecture"
-  ],
-  "responsibilities": [
-    "Lead Platform Team",
-    "Mentor Junior Engineers",
-    "Maintain CI/CD Infrastructure",
-    "Technical Documentation"
-  ],
-  "schools": [
-    "Norwegian University of Science and Technology",
-    "MIT OpenCourseWare"
-  ],
-  "mySite": "https://testalpha.dev",
-  "birthday": "1985-06-15T00:00:00Z",
   "otherMails": ["test.alpha.personal@gmail.com"],
   "faxNumber": "+47 22 11 11 12",
   "preferredDataLocation": "EUR"
@@ -143,14 +102,10 @@ cat logs/provision-2026-01-22T*.log
 ## What Should Work
 
 ### ✅ Expected to Work
-- All 8 array properties stored as actual arrays (not strings)
-- aboutMe string (500+ characters)
-- mySite URL validation
-- birthday date parsing
 - otherMails array
 - faxNumber string
 - Manager relationships alongside new properties
-- Custom properties still in open extensions
+- Custom columns are ignored by Option A (Option B can ingest labeled fields)
 
 ### ⚠️ May Not Work
 - **preferredDataLocation**: Requires multi-geo license (E5 or add-on)
@@ -165,20 +120,10 @@ Document your findings:
 ## Test Results - [Your Date]
 
 ### Arrays
-- skills: ✅ Array with X items / ❌ Stored as string / ❌ Failed
-- interests:
-- pastProjects:
-- responsibilities:
-- schools:
-- otherMails:
+- otherMails: ✅ Array with X items / ❌ Stored as string / ❌ Failed
 
 ### Strings
-- aboutMe: ✅ PASS (X characters)
-- mySite: ✅ PASS
 - faxNumber: ✅ PASS
-
-### Date
-- birthday: ✅ PASS (ISO format)
 
 ### Preferences
 - preferredDataLocation: ✅ PASS / ⚠️ Not supported / ❌ Error
@@ -194,7 +139,7 @@ Document your findings:
 
 After verifying CREATE works:
 
-1. **Edit the CSV** - Change some skills, update aboutMe, add interests
+1. **Edit the CSV** - Change some otherMails, update faxNumber
 2. **Run provision again**:
    ```bash
    npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
@@ -226,10 +171,10 @@ Or manually delete in Azure AD Portal.
 Arrays in CSV must be JSON-encoded:
 
 ```csv
-✅ Correct: "['TypeScript','Python','Azure']"
-✅ Also correct: "[""TypeScript"",""Python"",""Azure""]"
-❌ Wrong: "TypeScript,Python,Azure"
-❌ Wrong: TypeScript,Python,Azure
+✅ Correct: "['test.alpha.personal@gmail.com','test.alpha@outlook.com']"
+✅ Also correct: "[""test.alpha.personal@gmail.com"",""test.alpha@outlook.com""]"
+❌ Wrong: "test.alpha.personal@gmail.com,test.alpha@outlook.com"
+❌ Wrong: test.alpha.personal@gmail.com,test.alpha@outlook.com
 ```
 
 The system now supports:
@@ -238,22 +183,17 @@ The system now supports:
 
 ## Questions to Answer
 
-1. **Array limits**: Do 8 skills work? 50 skills? 100 skills?
-2. **String limits**: Does 500-char aboutMe work? 1000? 2000?
-3. **Special characters**: Do emoji work in arrays? Unicode characters?
-4. **Update behavior**: When updating arrays, are they replaced or appended?
-5. **Empty arrays**: Does `[]` clear an existing array property?
-6. **Visibility**: Are these properties searchable in Microsoft Search?
-7. **Profile cards**: Do these show up in Microsoft 365 profile cards?
+1. **Array limits**: Do 5+ otherMails work? 10+?
+2. **Update behavior**: When updating arrays, are they replaced or appended?
+3. **Empty arrays**: Does `[]` clear an existing array property?
+4. **Visibility**: Are these properties visible in user profile details?
 
 ## Success Criteria
 
 - ✅ All 3 users created without errors
 - ✅ Arrays stored as arrays (verified via Graph API)
 - ✅ No properties stored as strings that should be arrays
-- ✅ Date parsed correctly
 - ✅ Manager relationships work
-- ✅ Custom properties still work
 
 Once this passes, we have confirmed Option A works for simple properties!
 

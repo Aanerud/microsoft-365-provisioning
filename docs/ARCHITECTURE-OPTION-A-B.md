@@ -61,6 +61,7 @@ Create Entra ID user accounts with standard Microsoft 365 properties.
 - **Employment**: employeeId, employeeHireDate
 - **Manager**: manager relationships
 - **Licenses**: M365 license assignment (requires usageLocation)
+- **Scope**: Option A ignores any Option B fields in CSV (skills, aboutMe, languages, interests, etc.)
 
 ### Authentication
 - OAuth 2.0 Authorization Code Flow (browser-based)
@@ -240,11 +241,11 @@ Sarah Chen,sarah@domain.com,CEO,Executive,"['Leadership']","['Innovation']",Expe
 
 ### Option A Processing
 
-1. Parse CSV → Extract standard properties
+1. Parse CSV → Extract Option A properties only
 2. Batch create/update users in Entra ID
 3. Assign licenses
 4. Set manager relationships
-5. Log deferred properties (Option B properties)
+5. Ignore Option B properties (handled by Option B pipeline)
 
 ### Option B Processing
 
@@ -263,7 +264,7 @@ Sarah Chen,sarah@domain.com,CEO,Executive,"['Leadership']","['Innovation']",Expe
 | **Location & Regional** | usageLocation, preferredLanguage, city, state, country | Option A | Entra ID user object | Required for licensing |
 | **Contact** | mobilePhone, businessPhones | Option A | Entra ID user object | Communication |
 | **Official People Data** | skills, pastProjects, certifications, awards, aboutMe, mySite, birthday | Option B | Graph Connector | Has People Data labels |
-| **Custom People Data** | interests, responsibilities, schools | Option B | Graph Connector | No official labels, searchable |
+| **Custom People Data** | interests, responsibilities, schools, languages | Option B | Graph Connector | No official labels, searchable |
 | **Custom Organization** | VTeam, BenefitPlan, CostCenter, etc. | Option B | Graph Connector | Organization-specific fields |
 
 ## Performance Characteristics

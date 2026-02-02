@@ -42,12 +42,13 @@ The CSV file defines the desired state of your Azure AD users. When you run the 
 
 ## Comprehensive Property Support
 
-### Standard Properties (50+)
+### Standard Properties (Option A only)
 
-The tool supports **all writable user properties** from the Microsoft Graph Beta API:
+Option A only writes properties marked `handledBy=optionA` in the schema. Any Option B properties
+(skills, aboutMe, languages, interests, etc.) are ignored here and handled by the Option B pipeline.
 
-**Basic Info (5 properties)**
-- displayName, givenName, surname, aboutMe, accountEnabled
+**Basic Info (4 properties)**
+- displayName, givenName, surname, accountEnabled
 
 **Contact (6 properties)**
 - mail, mailNickname, mobilePhone, businessPhones, otherMails, faxNumber
@@ -64,8 +65,9 @@ The tool supports **all writable user properties** from the Microsoft Graph Beta
 **Preferences (4 properties)**
 - usageLocation, preferredLanguage, preferredDataLocation, mailboxSettings
 
-**Personal (7 properties)**
+**Personal (Option B / future)**
 - birthday, interests, skills, schools, pastProjects, responsibilities, mySite
+- languages (future connector support)
 
 **Security (2 properties)**
 - passwordPolicies, passwordProfile
@@ -76,9 +78,10 @@ The tool supports **all writable user properties** from the Microsoft Graph Beta
 **Legal/Compliance (2 properties)**
 - ageGroup, consentProvidedForMinor
 
-### Custom Properties (Unlimited)
+### Custom Properties (Deferred to Option B)
 
-Any CSV column **not in the standard schema** is automatically stored as a **custom property** using Microsoft Graph open extensions.
+Any CSV column **not in the standard schema** is treated as Option B enrichment and is **not written** by Option A.
+Option B can ingest labeled fields as its schema expands (e.g., languages when labels become available).
 
 **Example CSV with Custom Properties:**
 
@@ -89,9 +92,9 @@ Jane Smith,jane@domain.com,Manager,false,MGR-002,Green
 ```
 
 **Standard properties**: name, email, jobTitle
-**Custom properties**: DeploymentManager, ProjectCode, FavoriteColor
+**Custom properties**: DeploymentManager, ProjectCode, FavoriteColor (Option B)
 
-Custom properties are stored in an open extension named `com.m365provision.customFields` on each user object.
+Custom properties are ingested via the Option B connector instead of being written to the Entra ID user object.
 
 ## Usage Examples
 
@@ -275,7 +278,7 @@ $ npm run provision -- --dry-run
 #   DeploymentManager: false → true (custom)
 
 $ npm run provision
-# Updates custom properties via open extensions
+# Custom properties are deferred to Option B (Graph Connector)
 ```
 
 ## Technical Details
@@ -308,24 +311,7 @@ All operations use Microsoft Graph batch API:
 
 ### Custom Property Storage
 
-Custom properties use Microsoft Graph open extensions:
-
-**Extension format:**
-```json
-{
-  "@odata.type": "microsoft.graph.openTypeExtension",
-  "extensionName": "com.m365provision.customFields",
-  "DeploymentManager": "true",
-  "ProjectCode": "ENG-001",
-  "FavoriteColor": "Blue"
-}
-```
-
-**Benefits:**
-- No schema modification required
-- Unlimited custom properties
-- Queryable via Graph API
-- Portable across tenants
+Custom properties are handled by Option B via the Graph Connector schema, not written to the Entra ID user object.
 
 ## CLI Reference
 
@@ -399,12 +385,12 @@ Any column name matching a standard Microsoft Graph property:
 
 ### Custom Property Columns
 
-Any column **not** in the standard schema:
+Any column **not** in the standard schema is treated as Option B enrichment and ignored by Option A:
 
-- `DeploymentManager` - Custom field
-- `ProjectCode` - Custom field
-- `CostCenter` - Custom field
-- `TeamColor` - Custom field
+- `DeploymentManager` - Custom field (Option B)
+- `ProjectCode` - Custom field (Option B)
+- `CostCenter` - Custom field (Option B)
+- `TeamColor` - Custom field (Option B)
 - ... unlimited custom fields
 
 ### Example CSV
@@ -435,10 +421,6 @@ The exported configuration now includes state tracking:
       "jobTitle": "Chief Executive Officer",
       "city": "Seattle",
       "usageLocation": "US",
-      "customProperties": {
-        "DeploymentManager": "true",
-        "ProjectCode": "EXEC-001"
-      },
       "lastAction": "CREATE",
       "lastModified": "2026-01-22T15:30:00Z",
       "changedFields": [],
@@ -529,7 +511,7 @@ John Doe,john@domain.com,US
 
 ### 6. Use Custom Properties Wisely
 
-Document your custom properties:
+Document your custom properties (used by Option B connector):
 
 ```csv
 # Custom properties:
@@ -594,6 +576,6 @@ Microsoft Graph API limits:
 ## Related Documentation
 
 - [Microsoft Graph User Resource](https://learn.microsoft.com/en-us/graph/api/resources/user?view=graph-rest-beta)
-- [Open Extensions](https://learn.microsoft.com/en-us/graph/extensibility-open-users)
+- [Graph Connectors](https://learn.microsoft.com/en-us/graph/connecting-external-content-connectors)
 - [JSON Batching](https://learn.microsoft.com/en-us/graph/json-batching)
 - [Throttling Limits](https://learn.microsoft.com/en-us/graph/throttling-limits)
