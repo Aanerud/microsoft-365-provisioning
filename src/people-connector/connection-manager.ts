@@ -65,7 +65,10 @@ export class PeopleConnectionManager {
    * Get schema status
    */
   async getSchema(): Promise<any> {
-    return await this.betaClient.api(`/external/connections/${this.connectionId}/schema`).get();
+    return await this.betaClient
+      .api(`/external/connections/${this.connectionId}/schema`)
+      .header('Prefer', 'include-unknown-enum-members')
+      .get();
   }
 
   /**
@@ -82,6 +85,7 @@ export class PeopleConnectionManager {
       // The v1.0 API may treat these labels as 'unknownFutureValue' and fail user mapping
       await this.betaClient
         .api(`/external/connections/${this.connectionId}/schema`)
+        .header('Prefer', 'include-unknown-enum-members')
         .patch(schema);
 
       console.log('✓ Schema registration initiated (using beta API)');
@@ -136,6 +140,45 @@ export class PeopleConnectionManager {
   }
 
   /**
+   * Verify that the registered schema has the expected people data labels.
+   * Throws if labels are missing or returned as 'unknownFutureValue'.
+   */
+  async verifySchemaLabels(expectedLabels: string[] = ['personAccount', 'personSkills']): Promise<void> {
+    console.log('Verifying schema labels...');
+    const schema = await this.getSchema();
+    const properties: any[] = schema.properties || [];
+
+    const foundLabels = new Set<string>();
+    const problems: string[] = [];
+
+    for (const prop of properties) {
+      for (const label of prop.labels || []) {
+        if (label === 'unknownFutureValue') {
+          problems.push(`Property "${prop.name}" has label "unknownFutureValue" (Prefer header may be missing or beta API not used)`);
+        } else {
+          foundLabels.add(label);
+        }
+      }
+    }
+
+    for (const expected of expectedLabels) {
+      if (!foundLabels.has(expected)) {
+        problems.push(`Expected label "${expected}" not found in schema`);
+      }
+    }
+
+    if (problems.length > 0) {
+      console.error('Schema verification failed:');
+      for (const p of problems) {
+        console.error(`  - ${p}`);
+      }
+      throw new Error(`Schema verification failed: ${problems.join('; ')}`);
+    }
+
+    console.log(`✓ Schema labels verified: ${[...foundLabels].join(', ')}`);
+  }
+
+  /**
    * Delete connection (cleanup)
    */
   async deleteConnection(): Promise<void> {
@@ -169,9 +212,12 @@ export class PeopleConnectionManager {
 
     try {
       // Step 1: Register as a profile source (beta endpoint)
+      // IMPORTANT: 'kind' property is REQUIRED per Microsoft docs
+      // https://learn.microsoft.com/graph/api/peopleadminsettings-post-profilesources
       const profileSourcePayload = {
         sourceId: this.connectionId,
         displayName,
+        kind: 'Connector',
         webUrl,
       };
 

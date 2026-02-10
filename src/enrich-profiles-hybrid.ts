@@ -2,9 +2,10 @@
 /**
  * Hybrid Profile Enrichment
  *
- * Uses the optimal approach for each data type to maximize Copilot searchability:
+ * Clean separation: Graph Connectors handle all data that has a people data label;
+ * Profile API handles only data without labels (languages, interests).
  *
- * 1. Graph Connectors (people data labels only) - Copilot-searchable:
+ * 1. Graph Connectors (people data labels) - Copilot-searchable:
  *    - skills (personSkills label)
  *    - aboutMe/notes (personNote label)
  *    - certifications, awards, projects, birthday, mySite (labels only)
@@ -13,7 +14,6 @@
  * 2. Profile API (Direct POST) - Profile cards only (not Copilot-searchable):
  *    - languages (no connector label available)
  *    - interests (no connector label available)
- *    - skills, aboutMe (also written here for profile cards)
  *
  * Key insight: Data written via Profile API with delegated auth is stored as
  * source.type: "User" with isSearchable: false. Only data from system sources
@@ -28,6 +28,7 @@
  */
 
 import fs from 'fs/promises';
+import path from 'path';
 import { parse } from 'csv-parse/sync';
 import dotenv from 'dotenv';
 import { GraphClient } from './graph-client.js';
@@ -40,16 +41,14 @@ import { getOptionBProperties } from './schema/user-property-schema.js';
 import { applyOidCacheToRows, ensureOidCacheWithAuth, ensureOidCacheWithClient } from './oid-cache.js';
 import {
   ProfileWriter,
-  SkillProficiency,
   PersonInterest,
-  PersonNote,
   LanguageProficiency,
 } from './profile-writer.js';
 
 dotenv.config();
 
 // Profile API fields (handled directly)
-const PROFILE_API_FIELDS = ['skills', 'languages', 'aboutMe', 'interests'];
+const PROFILE_API_FIELDS = ['languages', 'interests'];
 
 // Standard user fields (handled by Option A provisioning, not enrichment)
 const STANDARD_USER_FIELDS = new Set([
@@ -70,8 +69,6 @@ interface EnrichOptions {
 
 interface UserProfile {
   email: string;
-  skills?: string[];
-  aboutMe?: string;
   interests?: string[];
   languages?: LanguageProficiency[];
 }
@@ -162,13 +159,7 @@ class HybridProfileEnrichment {
         email: row.email,
       };
 
-      // Parse Profile API fields
-      if (row.skills) {
-        profile.skills = this.parseArrayValue(row.skills);
-      }
-      if (row.aboutMe) {
-        profile.aboutMe = row.aboutMe;
-      }
+      // Parse Profile API fields (languages, interests only - skills/aboutMe handled by Graph Connectors)
       if (row.interests) {
         profile.interests = this.parseArrayValue(row.interests);
       }
@@ -209,7 +200,7 @@ class HybridProfileEnrichment {
     console.log('\n' + '='.repeat(60));
     console.log('PHASE 1: Profile API (Direct POST)');
     console.log('='.repeat(60));
-    console.log('Writing: skills, languages, notes (aboutMe), interests\n');
+    console.log('Writing: languages, interests (no people data labels available)\n');
 
     const profileWriter = new ProfileWriter(accessToken);
     let successful = 0;
@@ -218,8 +209,6 @@ class HybridProfileEnrichment {
     for (let i = 0; i < profiles.length; i++) {
       const profile = profiles[i];
       const hasProfileData =
-        (profile.skills && profile.skills.length > 0) ||
-        profile.aboutMe ||
         (profile.interests && profile.interests.length > 0) ||
         (profile.languages && profile.languages.length > 0);
 
@@ -228,8 +217,6 @@ class HybridProfileEnrichment {
       console.log(`[${i + 1}/${profiles.length}] ${profile.email}`);
 
       if (dryRun) {
-        if (profile.skills?.length) console.log(`  [DRY RUN] Would POST ${profile.skills.length} skills`);
-        if (profile.aboutMe) console.log(`  [DRY RUN] Would POST aboutMe`);
         if (profile.interests?.length) console.log(`  [DRY RUN] Would POST ${profile.interests.length} interests`);
         if (profile.languages?.length) console.log(`  [DRY RUN] Would POST ${profile.languages.length} languages`);
         successful++;
@@ -237,27 +224,6 @@ class HybridProfileEnrichment {
       }
 
       let userFailed = false;
-
-      // Skills
-      if (profile.skills && profile.skills.length > 0) {
-        const skillObjects: SkillProficiency[] = profile.skills.map(s => ({
-          displayName: s,
-          allowedAudiences: 'organization',
-        }));
-        const result = await profileWriter.writeSkills(profile.email, skillObjects);
-        if (result.failed > 0) userFailed = true;
-      }
-
-      // Notes (aboutMe)
-      if (profile.aboutMe) {
-        const noteObjects: PersonNote[] = [{
-          detail: profile.aboutMe,
-          displayName: 'About Me',
-          allowedAudiences: 'organization',
-        }];
-        const result = await profileWriter.writeNotes(profile.email, noteObjects);
-        if (result.failed > 0) userFailed = true;
-      }
 
       // Interests
       if (profile.interests && profile.interests.length > 0) {
@@ -323,7 +289,7 @@ class HybridProfileEnrichment {
       console.log('Setting up Graph Connector...');
 
       await connectionManager.createConnection(
-        'M365 People Enrichment',
+        'M365 Provision People Data',
         'People data enrichment for Copilot search (labeled properties only)'
       );
 
@@ -331,6 +297,9 @@ class HybridProfileEnrichment {
       const schema = PeopleSchemaBuilder.buildPeopleSchema();
       console.log(`Schema includes ${schema.length} labeled properties (personAccount + ${schema.length - 1} people labels).`);
       await connectionManager.registerSchema(schema);
+
+      // Verify schema labels were registered correctly
+      await connectionManager.verifySchemaLabels();
 
       // Register as profile source after schema is ready
       const userDomain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
@@ -345,10 +314,37 @@ class HybridProfileEnrichment {
       .filter(row => labeledOptionBFields.some(field => row[field] && row[field] !== ''))
       .map(row => itemIngester.createExternalItem(row));
 
+    const dumpItemEmail = process.env.DUMP_CONNECTOR_ITEM_EMAIL?.toLowerCase();
+    const dumpItems = dumpItemEmail
+      ? items.filter(item => {
+        const accountInfo = item?.properties?.accountInformation;
+        if (!accountInfo) return false;
+        try {
+          const parsed = JSON.parse(accountInfo);
+          return String(parsed.userPrincipalName || '').toLowerCase() === dumpItemEmail;
+        } catch {
+          return false;
+        }
+      })
+      : items;
+
+    if (process.env.DUMP_CONNECTOR_ITEMS === 'true') {
+      await fs.mkdir('debug', { recursive: true });
+      const suffix = dumpItemEmail ? `-${dumpItemEmail.replace(/[@.]/g, '-')}` : '';
+      const dumpPath = path.join('debug', `external-items-${options.connectionId}${suffix}.json`);
+      await fs.writeFile(dumpPath, JSON.stringify(dumpItems, null, 2), 'utf-8');
+      if (dumpItemEmail && dumpItems.length === 0) {
+        console.log(`No connector items matched ${dumpItemEmail}`);
+      }
+      console.log(`Wrote connector payloads to ${dumpPath}`);
+    }
+
     if (options.dryRun) {
       console.log('\nDry Run - Sample Item:');
-      if (items.length > 0) {
-        console.log(JSON.stringify(items[0], null, 2));
+      if (dumpItems.length > 0) {
+        console.log(JSON.stringify(dumpItems[0], null, 2));
+      } else if (dumpItemEmail) {
+        console.log(`No connector items matched ${dumpItemEmail}`);
       }
       console.log(`\nWould ingest ${items.length} items`);
       return { successful: items.length, failed: 0 };
@@ -429,7 +425,7 @@ class HybridProfileEnrichment {
     if (!options.skipConnector) {
       let oidCacheResult;
       if (delegatedAccessToken) {
-        const delegatedClient = new GraphClient({ accessToken: delegatedAccessToken, useBeta: true });
+        const delegatedClient = new GraphClient({ accessToken: delegatedAccessToken });
         oidCacheResult = await ensureOidCacheWithClient({
           csvPath: options.csvPath,
           tenantId: this.tenantId,
