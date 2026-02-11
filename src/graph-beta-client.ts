@@ -12,8 +12,8 @@ import { GraphClient, GraphClientConfig } from './graph-client.js';
  * - Preview provisioning features
  * - Early access to new Graph API capabilities
  *
- * Note: Beta APIs may change without notice. This client implements graceful
- * fallback to v1.0 endpoints when beta features are unavailable.
+ * Note: Beta APIs may change without notice. This client enforces beta
+ * endpoints exclusively.
  */
 
 export interface ExtendedUserAttributes {
@@ -48,8 +48,8 @@ export class GraphBetaClient {
   private baseClient: GraphClient;
 
   constructor(config: GraphClientConfig) {
-    // Always enable beta for this client
-    this.baseClient = new GraphClient({ ...config, useBeta: true });
+    // Always enforce beta for this client
+    this.baseClient = new GraphClient({ ...config });
   }
 
   /**
@@ -60,7 +60,7 @@ export class GraphBetaClient {
    * - companyName: Organization or company name
    * - officeLocation: Physical office location
    *
-   * Falls back to v1.0 if beta unavailable (extended attributes will be omitted).
+   * Beta-only; no v1.0 fallback.
    */
   async createUserWithExtendedAttributes(params: {
     displayName: string;
@@ -98,7 +98,7 @@ export class GraphBetaClient {
    * Get user with extended profile
    *
    * Retrieves user with beta-only attributes.
-   * Falls back to v1.0 if beta unavailable.
+   * Beta-only; no v1.0 fallback.
    */
   async getExtendedUserProfile(userId: string): Promise<any> {
     return await this.baseClient.getUserBeta(userId);
@@ -197,7 +197,7 @@ export class GraphBetaClient {
    * List users with extended attributes
    *
    * Retrieves users with beta-only attributes included.
-   * Falls back to standard user list if beta unavailable.
+   * Beta-only; no v1.0 fallback.
    *
    * @param filter Optional OData filter
    * @returns Array of users with extended attributes
@@ -207,10 +207,8 @@ export class GraphBetaClient {
       // Use base client's list method, which should use beta if enabled
       return await this.baseClient.listUsers(filter);
     } catch (error: any) {
-      console.warn('⚠ Failed to list users with beta attributes, falling back to v1.0');
-      // Fallback: Try with beta disabled
-      const fallbackClient = new GraphClient({ useBeta: false });
-      return await fallbackClient.listUsers(filter);
+      console.warn('⚠ Failed to list users with beta attributes');
+      throw error;
     }
   }
 
@@ -268,7 +266,6 @@ export async function main() {
     tenantId,
     clientId,
     clientSecret,
-    useBeta: true,
   });
 
   try {

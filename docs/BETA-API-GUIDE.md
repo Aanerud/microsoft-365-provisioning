@@ -51,7 +51,6 @@ import { GraphClient } from './graph-client.js';
 
 const client = new GraphClient({
   accessToken: 'your-access-token',
-  useBeta: true,
 });
 
 const user = await client.createUser({
@@ -92,28 +91,14 @@ Beta user endpoint returns additional fields:
 }
 ```
 
-## Enabling Beta Features
+## Enforcing Beta Endpoints
 
-### Method 1: Environment Variable
-
-```bash
-# In .env file
-USE_BETA_ENDPOINTS=true
-```
-
-### Method 2: CLI Flag
-
-```bash
-npm run provision -- --use-beta
-```
-
-### Method 3: Programmatic
+All Microsoft Graph calls in this project use **beta endpoints only**. Keep
+`USE_BETA_ENDPOINTS=true` in `.env` for clarity, but there is no CLI flag or
+per-call toggle.
 
 ```typescript
-const client = new GraphClient({
-  accessToken: token,
-  useBeta: true,
-});
+const client = new GraphClient({ accessToken: token });
 ```
 
 ## Beta Endpoints Reference
@@ -189,51 +174,14 @@ const client = new GraphClient({
 
 **Note**: Requires `SearchConfiguration.Read.All` permission (not yet implemented)
 
-## Fallback Strategy
+## Beta-Only Behavior
 
-This project implements automatic fallback to v1.0 when beta endpoints are unavailable:
-
-### Fallback Flow
-
-```
-1. Attempt beta endpoint with extended attributes
-   ↓
-2. If beta fails (404, 400, or "beta not available")
-   ↓
-3. Log warning to console
-   ↓
-4. Retry with v1.0 endpoint (without extended attributes)
-   ↓
-5. Return result (may be missing beta-only fields)
-```
-
-### Implementation Example
-
-```typescript
-async createUser(params) {
-  const hasBetaFields = params.employeeType || params.companyName || params.officeLocation;
-
-  try {
-    const client = hasBetaFields ? this.betaClient : this.client;
-    return await client.api('/users').post(userParams);
-  } catch (error) {
-    if (hasBetaFields && error.statusCode === 400) {
-      console.warn('⚠ Beta endpoint failed, falling back to v1.0');
-      return await this.createUser({
-        displayName: params.displayName,
-        email: params.email,
-        password: params.password,
-        // Extended attributes omitted
-      });
-    }
-    throw error;
-  }
-}
-```
+This project does **not** fall back to v1.0. If a beta endpoint is unavailable,
+the operation fails so you can address tenant configuration or permissions.
 
 ## CSV Configuration
 
-### Standard CSV (v1.0)
+### Standard CSV (core attributes)
 
 ```csv
 name,email,role,department
@@ -252,7 +200,7 @@ Jane Doe,jane.doe@domain.com,Consultant,Technology,Contractor,Fabrikam Inc,Remot
 
 **Usage**:
 ```bash
-npm run provision -- --csv config/agents-extended.csv --use-beta
+npm run provision -- --csv config/agents-extended.csv
 ```
 
 ## Checking Beta Availability
@@ -287,7 +235,7 @@ node dist/graph-beta-client.js check-availability
 ```
 Error: Request failed with status code 404
 Reason: Beta endpoint not available in tenant
-Solution: Tool automatically falls back to v1.0
+Solution: Verify tenant supports beta endpoints and required permissions
 ```
 
 #### 2. Invalid Beta Attribute (400)
@@ -313,8 +261,7 @@ try {
   await betaClient.createUserWithExtendedAttributes(params);
 } catch (error) {
   if (error.statusCode === 404) {
-    // Beta not available - fallback handled automatically
-    console.warn('Beta unavailable, using v1.0');
+    console.error('Beta endpoint unavailable - check tenant support');
   } else if (error.statusCode === 403) {
     // Permission issue
     console.error('Permission denied - check Azure AD permissions');
@@ -346,11 +293,10 @@ When beta features graduate to v1.0:
 
 ### Best Practices
 
-1. **Always Implement Fallback**: Never rely solely on beta features
-2. **Log Beta Usage**: Track when beta endpoints are used
-3. **Monitor Changelog**: Stay updated on beta changes
-4. **Test Regularly**: Verify beta features still work as expected
-5. **Document Dependencies**: Note which features require beta
+1. **Log Beta Usage**: Track when beta endpoints are used
+2. **Monitor Changelog**: Stay updated on beta changes
+3. **Test Regularly**: Verify beta features still work as expected
+4. **Document Dependencies**: Note which features require beta
 
 ## Performance Considerations
 
@@ -383,10 +329,9 @@ async function provisionWithBeta() {
   });
   const authResult = await auth.getAccessToken();
 
-  // Create client with beta enabled
+  // Create client (beta-only enforced)
   const client = new GraphClient({
     accessToken: authResult.accessToken,
-    useBeta: true,
   });
 
   // Provision user
@@ -411,7 +356,6 @@ import { GraphBetaClient } from './graph-beta-client.js';
 async function bulkProvisionWithBeta() {
   const betaClient = new GraphBetaClient({
     accessToken: token,
-    useBeta: true,
   });
 
   const users = [
@@ -448,20 +392,20 @@ async function bulkProvisionWithBeta() {
 async function updateExtendedAttributes(userId: string) {
   const client = new GraphClient({
     accessToken: token,
-    useBeta: true,
   });
 
   // Check if beta is available
   const betaAvailable = await client.checkBetaAvailability();
 
-  if (betaAvailable) {
-    await client.updateUserBeta(userId, {
-      employeeType: 'Senior Employee',
-      officeLocation: 'Building 2',
-    });
-  } else {
-    console.warn('Beta not available, cannot update extended attributes');
+  if (!betaAvailable) {
+    console.warn('Beta endpoint unavailable - check tenant configuration');
+    return;
   }
+
+  await client.updateUserBeta(userId, {
+    employeeType: 'Senior Employee',
+    officeLocation: 'Building 2',
+  });
 }
 ```
 
@@ -472,9 +416,9 @@ async function updateExtendedAttributes(userId: string) {
 **Cause**: Azure AD portal may not display all beta attributes
 **Solution**: Use Microsoft Graph Explorer to verify attributes are set
 
-### Issue: Fallback always triggered
+### Issue: Beta endpoints unavailable
 
-**Cause**: Beta endpoints genuinely unavailable in tenant
+**Cause**: Tenant or cloud does not support beta endpoints
 **Solution**: Verify tenant supports beta endpoints; some government clouds may not
 
 ### Issue: Permission errors despite admin consent

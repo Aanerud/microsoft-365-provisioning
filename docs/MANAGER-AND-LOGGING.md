@@ -24,7 +24,7 @@ Microsoft Graph API allows you to establish organizational hierarchy by assignin
 **Request Body**:
 ```json
 {
-  "@odata.id": "https://graph.microsoft.com/v1.0/users/{managerId}"
+  "@odata.id": "https://graph.microsoft.com/beta/users/{managerId}"
 }
 ```
 
@@ -110,17 +110,17 @@ await graphClient.removeManager(userId);
 
 **Get user with manager**:
 ```
-GET https://graph.microsoft.com/v1.0/users/{userId}?$expand=manager
+GET https://graph.microsoft.com/beta/users/{userId}?$expand=manager
 ```
 
 **Get user's direct reports**:
 ```
-GET https://graph.microsoft.com/v1.0/users/{userId}/directReports
+GET https://graph.microsoft.com/beta/users/{userId}/directReports
 ```
 
 **Get manager's details**:
 ```
-GET https://graph.microsoft.com/v1.0/users/{userId}/manager
+GET https://graph.microsoft.com/beta/users/{userId}/manager
 ```
 
 ### Error Handling
@@ -341,12 +341,12 @@ grep -c WARN logs/provision-2026-01-22T15-30-45.log
 
 1. **Dry-run first**:
 ```bash
-npm run provision -- --dry-run --use-beta
+npm run provision -- --dry-run
 ```
 
 2. **Provision users**:
 ```bash
-npm run provision -- --use-beta
+npm run provision
 ```
 
 3. **Verify in Azure AD**:
@@ -358,7 +358,7 @@ npm run provision -- --use-beta
 4. **Query via Graph API**:
 ```bash
 # Using Graph Explorer (https://developer.microsoft.com/graph/graph-explorer)
-GET https://graph.microsoft.com/v1.0/users/kari.andersen@domain.com?$expand=manager
+GET https://graph.microsoft.com/beta/users/kari.andersen@domain.com?$expand=manager
 
 # Response includes manager details
 {
@@ -379,7 +379,7 @@ GET https://graph.microsoft.com/v1.0/users/kari.andersen@domain.com?$expand=mana
 
 1. **Run provision**:
 ```bash
-npm run provision -- --use-beta
+npm run provision
 ```
 
 2. **Check console for log file path**:
@@ -451,9 +451,9 @@ Your 20-user Norwegian dataset includes:
 ## References
 
 **Sources**:
-- [Assign manager - Microsoft Graph v1.0](https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0)
-- [Update user - Microsoft Graph v1.0](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0)
-- [Working with users in Microsoft Graph](https://learn.microsoft.com/en-us/graph/api/resources/users?view=graph-rest-1.0)
+- [Assign manager - Microsoft Graph beta](https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-beta)
+- [Update user - Microsoft Graph beta](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-beta)
+- [Working with users in Microsoft Graph](https://learn.microsoft.com/en-us/graph/api/resources/users?view=graph-rest-beta)
 - [Set-MgUserManagerByRef PowerShell](https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.users/set-mgusermanagerbyref?view=graph-powershell-1.0)
 
 ---

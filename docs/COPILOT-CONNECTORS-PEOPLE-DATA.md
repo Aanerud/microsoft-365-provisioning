@@ -24,8 +24,9 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ 3. REGISTER AS PROFILE SOURCE (Beta API)                                    │
 │    POST /admin/people/profileSources                                        │
-│    { sourceId: connectionId, webUrl: '...' }                                │
+│    { sourceId: connectionId, kind: 'Connector', webUrl: '...' }             │
 │                                                                             │
+│    ⚠️ CRITICAL: kind: 'Connector' is REQUIRED per Microsoft docs            │
 │    Links connector to Microsoft 365 People experiences                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -466,29 +467,32 @@ Track user interactions with the item:
 
 ## 7. Available People Data Labels (Complete Reference)
 
-| Label | Type | Profile Entity | Our Usage |
-|-------|------|----------------|-----------|
-| `personAccount` | string | userAccountInformation | ✅ Required |
-| `personSkills` | stringCollection | skillProficiency | ✅ Implemented |
-| `personNote` | string | personAnnotation | ✅ Implemented |
-| `personName` | string | personName | Not used |
-| `personCurrentPosition` | string | workPosition | Not used |
-| `personAddresses` | stringCollection | itemAddress | Not used |
-| `personEmails` | stringCollection | itemEmail | Not used |
-| `personPhones` | stringCollection | itemPhone | Not used |
-| `personAwards` | stringCollection | personAward | Could add |
-| `personCertifications` | stringCollection | personCertification | Could add |
-| `personProjects` | stringCollection | projectParticipation | Could add |
-| `personWebAccounts` | stringCollection | webAccount | Not used |
-| `personWebSite` | string | webSite | Not used |
-| `personAnniversaries` | stringCollection | personAnniversary | Not used |
+All 14 people data labels from Microsoft documentation:
 
-### NOT Supported (Platform Limitation)
-- `personLanguages` - No label exists
-- `personInterests` - No label exists
+| # | Label | Type | Profile Entity | JSON Format | Our Usage |
+|---|-------|------|----------------|-------------|-----------|
+| 1 | `personAccount` | string | userAccountInformation | `{"userPrincipalName":"user@domain.com"}` | ✅ Required |
+| 2 | `personSkills` | stringCollection | skillProficiency | `{"displayName":"TypeScript"}` | ✅ Implemented |
+| 3 | `personNote` | string | personAnnotation | `{"detail":{"contentType":"text","content":"..."}}` | ✅ Implemented |
+| 4 | `personCertifications` | stringCollection | personCertification | `{"displayName":"AWS Cert","issuedDate":"2024-01-15"}` | Could add |
+| 5 | `personAnniversaries` | stringCollection | personAnniversary | `{"type":"birthday","date":"1990-05-15"}` | Not used |
+| 6 | `personInterests` | stringCollection | personInterest | `{"displayName":"Machine Learning"}` | Not used |
+| 7 | `personWebSite` | string | webSite | `{"displayName":"https://example.com"}` | Not used |
+| 8 | `personName` | string | personName | `{"displayName":"John Smith"}` | Not used |
+| 9 | `personAddress` | stringCollection | itemAddress | `{"type":"work","street":"123 Main St"}` | Not used |
+| 10 | `personEmailAddress` | stringCollection | itemEmail | `{"address":"john@example.com","type":"work"}` | Not used |
+| 11 | `personPhone` | stringCollection | itemPhone | `{"number":"+1-555-0100","type":"mobile"}` | Not used |
+| 12 | `personResponsibilities` | stringCollection | personResponsibility | `{"displayName":"Team Lead"}` | Not used |
+| 13 | `personWebAccount` | stringCollection | webAccount | `{"displayName":"LinkedIn","webUrl":"https://..."}` | Not used |
+| 14 | `personProjectParticipation` | stringCollection | projectParticipation | `{"displayName":"Project Atlas"}` | Could add |
+
+### NOT Supported via Connectors (Platform Limitation)
+- `personLanguages` - No label exists (use Profile API instead)
 - `personManager` - Not yet supported
 - `personAssistants` - Not yet supported
 - `personColleagues` - Not yet supported
+
+> **Note**: The `personInterests` label exists but has limited support. For interests, the Profile API may be more reliable.
 
 ---
 
@@ -516,13 +520,13 @@ Before testing, ensure:
 | Requirement | Status | Location | Notes |
 |-----------|--------|----------|-------|
 | `contentCategory: 'people'` | ✅ | connection-manager.ts:37 | Correct |
-| `personAccount` label + string type | ✅ | enrich-profiles-hybrid.ts:381 | Correct |
-| Schema types (string vs stringCollection) | ✅ | enrich-profiles-hybrid.ts:384-390 | Correct |
-| `accountInformation` with `userPrincipalName` | ✅ | enrich-profiles-hybrid.ts:419-420 | Correct |
-| ACL: `everyone`/`grant` | ✅ | enrich-profiles-hybrid.ts:454-458 | Correct |
-| `@odata.type` on stringCollection | ✅ | enrich-profiles-hybrid.ts:426 | Correct |
-| JSON serialization (skills) | ✅ | enrich-profiles-hybrid.ts:427-429 | `{displayName: ...}` |
-| JSON serialization (aboutMe) | ✅ | enrich-profiles-hybrid.ts:434-436 | `{detail: {contentType, content}}` |
+| `personAccount` label + string type | ✅ | enrich-connector.ts:381 | Correct |
+| Schema types (string vs stringCollection) | ✅ | enrich-connector.ts:384-390 | Correct |
+| `accountInformation` with `userPrincipalName` | ✅ | enrich-connector.ts:419-420 | Correct |
+| ACL: `everyone`/`grant` | ✅ | enrich-connector.ts:454-458 | Correct |
+| `@odata.type` on stringCollection | ✅ | enrich-connector.ts:426 | Correct |
+| JSON serialization (skills) | ✅ | enrich-connector.ts:427-429 | `{displayName: ...}` |
+| JSON serialization (aboutMe) | ✅ | enrich-connector.ts:434-436 | `{detail: {contentType, content}}` |
 | Profile source registration | ✅ | connection-manager.ts:137-213 | Beta API |
 | Profile source prioritization | ✅ | connection-manager.ts:161-191 | Beta API |
 
@@ -530,7 +534,7 @@ Before testing, ensure:
 
 ### Verified: `aboutMe` Serialization Format is CORRECT ✅
 
-**Current implementation** (`enrich-profiles-hybrid.ts` line 434-436):
+**Current implementation** (`enrich-connector.ts` line 434-436):
 ```typescript
 properties.aboutMe = JSON.stringify({
   detail: { contentType: 'text', content: profile.aboutMe }
@@ -589,7 +593,7 @@ Microsoft takes time to fully remove the connection and schema.
 
 ### Step 4: Run Setup with New Schema
 ```bash
-npm run enrich:connector-only -- --csv config/textcraft-europe.csv --setup --connection-id m365people3
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --setup --connection-id m365people3
 ```
 
 **CRITICAL**: If schema gets stuck in "draft" state (>60s), use the wait-and-ingest script:
@@ -638,6 +642,36 @@ After indexing, test with queries like:
 
 ## 11. Critical Implementation Notes
 
+### Profile Source Registration: `kind` Property is REQUIRED
+
+> ⚠️ **CRITICAL FIX**: The `kind: 'Connector'` property is **REQUIRED** in the profile source registration payload.
+
+When registering a Graph Connector as a profile source, the payload MUST include:
+
+```typescript
+// WRONG - causes "Profile source exists but missing kind property" error loop
+const profileSourcePayload = {
+  sourceId: this.connectionId,
+  displayName,
+  webUrl,
+};
+
+// CORRECT - kind: 'Connector' is REQUIRED per Microsoft docs
+const profileSourcePayload = {
+  sourceId: this.connectionId,
+  displayName,
+  kind: 'Connector',  // <-- REQUIRED
+  webUrl,
+};
+```
+
+**Without `kind: 'Connector'`**:
+- Profile source may be created but not properly linked
+- Data won't appear in profile cards or Copilot
+- API may accept the request but produce undefined behavior
+
+**Location in code**: `src/people-connector/connection-manager.ts`
+
 ### Beta API Requirement
 The `contentCategory: 'people'` parameter is **only supported by the beta API**. Using the v1.0 API will result in the connection being created with `contentCategory: 'uncategorized'`, which causes:
 - `personAccount`, `personSkills`, `personNote` labels to show as `unknownFutureValue`
@@ -657,4 +691,4 @@ When recreating connections, ensure old connections are **fully deleted** (wait 
 
 ---
 
-**Last Updated**: 2026-01-27
+**Last Updated**: 2026-02-05

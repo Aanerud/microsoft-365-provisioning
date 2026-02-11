@@ -76,14 +76,14 @@ node dist/auth/token-cache.js info
 
 Edit `config/agents-template.csv` with your desired agent definitions:
 
-**Standard CSV (v1.0 endpoints):**
+**Standard CSV (core attributes):**
 ```csv
 name,email,role,department
 Sarah Chen,sarah.chen@yourdomain.com,CEO,Executive
 Michael Rodriguez,michael.rodriguez@yourdomain.com,CTO,Engineering
 ```
 
-**Extended CSV (beta endpoints - recommended):**
+**Extended CSV (beta endpoints):**
 ```csv
 name,email,role,department,employeeType,companyName,officeLocation
 Sarah Chen,sarah.chen@yourdomain.com,CEO,Executive,Employee,Contoso Ltd,Building 1
@@ -102,7 +102,7 @@ Robert Taylor,robert.taylor@yourdomain.com,QA Engineer,Engineering,Contractor,Fa
 | role       | Job title/role                        | CEO                      |
 | department | Department/team                       | Executive                |
 
-#### Optional Columns (Beta - Use with `--use-beta` flag)
+#### Optional Columns (Beta endpoints - always enabled)
 
 | Column         | Description                        | Example           |
 |----------------|------------------------------------|--------------------|
@@ -110,7 +110,7 @@ Robert Taylor,robert.taylor@yourdomain.com,QA Engineer,Engineering,Contractor,Fa
 | companyName    | Organization or company name       | Contoso Ltd        |
 | officeLocation | Physical office location           | Building 1, Remote |
 
-**Note**: Beta columns require the `--use-beta` flag. If omitted, these fields are ignored gracefully.
+**Note**: Beta endpoints are always used. Extended columns are supported by default.
 
 ### Agent Role Guidelines
 
@@ -172,7 +172,6 @@ Options:
   --csv <path>           Use custom CSV file (default: config/agents-template.csv)
   --output <path>        Custom output path (default: output/agents-config.json)
   --skip-licenses        Skip license assignment (users only)
-  --use-beta             Enable Microsoft Graph BETA endpoints (extended attributes)
   --auth                 Force re-authentication (ignore cached token)
   --logout               Clear cached authentication token
   --force                Overwrite existing users (dangerous!)
@@ -189,9 +188,9 @@ To provision users with extended attributes (employeeType, companyName, officeLo
    Sarah Chen,sarah.chen@domain.com,CEO,Executive,Employee,Contoso Ltd,Building 1
    ```
 
-2. Run with `--use-beta` flag:
+2. Run provisioning:
    ```bash
-   npm run provision -- --use-beta
+   npm run provision
    ```
 
 3. Output will indicate beta usage:
@@ -205,23 +204,20 @@ To provision users with extended attributes (employeeType, companyName, officeLo
 
 **Important Notes:**
 - Beta endpoints provide preview features but may change without notice
-- Tool automatically falls back to v1.0 if beta unavailable (extended attributes omitted)
+- This project does **not** fall back to v1.0
 - See [docs/BETA-API-GUIDE.md](./docs/BETA-API-GUIDE.md) for detailed beta documentation
 
 ### Example Commands
 
 ```bash
-# Standard provisioning (v1.0)
+# Provisioning (beta endpoints)
 npm run provision
 
-# With beta features (extended attributes)
-npm run provision -- --use-beta
-
 # Dry run to preview changes
-npm run provision -- --dry-run --use-beta
+npm run provision -- --dry-run
 
 # Use custom CSV file
-npm run provision -- --csv config/custom-agents.csv --use-beta
+npm run provision -- --csv config/custom-agents.csv
 
 # Skip license assignment (users only)
 npm run provision -- --skip-licenses

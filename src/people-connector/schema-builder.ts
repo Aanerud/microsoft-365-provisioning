@@ -1,5 +1,8 @@
 import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-property-schema.js';
 
+// Skills-only mode: minimum viable connector for debugging
+const SKILLS_ONLY_LABELS = new Set(['personSkills']);
+
 const PROPERTY_NAME_REGEX = /^[A-Za-z0-9]+$/;
 const MAX_PROPERTY_NAME_LENGTH = 32;
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
@@ -37,7 +40,7 @@ export class PeopleSchemaBuilder {
 
     for (const prop of optionBProps) {
       const label = peopleDataMapping.get(prop.name);
-      if (!label) {
+      if (!label || !SKILLS_ONLY_LABELS.has(label)) {
         continue;
       }
 

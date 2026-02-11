@@ -33,7 +33,6 @@ interface ProvisionOptions {
   dryRun: boolean;
   skipLicenses: boolean;
   force: boolean;
-  useBeta: boolean;
   auth: boolean;
   // New state management flags
   skipDelete: boolean;    // Don't delete users not in CSV
@@ -192,7 +191,7 @@ class AgentProvisioner {
     console.log(`  Skip Delete: ${options.skipDelete}`);
     console.log(`  Skip Update: ${options.skipUpdate}`);
     console.log(`  Skip Create: ${options.skipCreate}`);
-    console.log(`  Beta Features: ${options.useBeta ? '✓ Enabled' : '✗ Disabled'}`);
+    console.log('  Beta Features: ✓ Enabled (always)');
     console.log('');
 
     // Load agent definitions from CSV
@@ -569,7 +568,6 @@ function parseArgs(): Partial<ProvisionOptions> & { command?: string } {
     dryRun: false,
     skipLicenses: false,
     force: false,
-    useBeta: false,
     auth: false,
     skipDelete: false,
     skipUpdate: false,
@@ -595,9 +593,6 @@ function parseArgs(): Partial<ProvisionOptions> & { command?: string } {
         break;
       case '--force':
         options.force = true;
-        break;
-      case '--use-beta':
-        options.useBeta = true;
         break;
       case '--auth':
         options.auth = true;
@@ -652,7 +647,6 @@ Options:
   --csv <path>           Use custom CSV file (default: config/agents-template.csv)
   --output <path>        Custom output path (default: output/agents-config.json)
   --skip-licenses        Skip license assignment
-  --use-beta             Enable Microsoft Graph BETA endpoints for extended attributes
   --force                Proceed with deletion without confirmation
   --auth                 Force re-authentication (ignore cached token)
   --skip-delete          Don't delete users not in CSV (only CREATE and UPDATE)
@@ -674,7 +668,7 @@ Examples:
   npm run provision -- --force                   # Skip delete confirmation
   npm run provision -- --show-diff               # Verbose diff output
   npm run provision -- --csv custom.csv          # Use custom CSV file
-  npm run provision -- --use-beta                # Enable beta features (50+ properties)
+  npm run provision --                           # Uses Microsoft Graph beta endpoints
 
 Custom Properties:
   Any CSV column not in the standard Microsoft Graph schema is deferred to Option B
@@ -736,10 +730,9 @@ async function main() {
 
     const authResult = await authServer.authenticate();
 
-    // Create GraphClient with access token and beta flag
+    // Create GraphClient with access token (beta endpoints enforced)
     const graphClient = new GraphClient({
       accessToken: authResult.accessToken,
-      useBeta: options.useBeta || false,
     });
 
     if (options.command !== 'cleanup') {

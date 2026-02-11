@@ -347,8 +347,8 @@ npm run provision -- --skip-create
 # Show detailed diff
 npm run provision -- --show-diff
 
-# Use beta API endpoints
-npm run provision -- --use-beta
+# Uses beta API endpoints (always)
+npm run provision
 
 # Skip license assignment
 npm run provision -- --skip-licenses

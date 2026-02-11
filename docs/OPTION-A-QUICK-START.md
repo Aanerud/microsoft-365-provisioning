@@ -24,7 +24,7 @@ We're pushing the standard `/users` endpoint to its limits by testing **Option A
 
 ### Step 1: Dry-Run (Preview Changes)
 ```bash
-npm run provision -- --use-beta --csv config/agents-test-maxprops.csv --dry-run
+npm run provision -- --csv config/agents-test-maxprops.csv --dry-run
 ```
 
 **What to look for**:
@@ -34,7 +34,7 @@ npm run provision -- --use-beta --csv config/agents-test-maxprops.csv --dry-run
 
 ### Step 2: Create the Test Users
 ```bash
-npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
+npm run provision -- --csv config/agents-test-maxprops.csv
 ```
 
 **What should happen**:
@@ -142,7 +142,7 @@ After verifying CREATE works:
 1. **Edit the CSV** - Change some otherMails, update faxNumber
 2. **Run provision again**:
    ```bash
-   npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
+   npm run provision -- --csv config/agents-test-maxprops.csv
    ```
 3. **Verify updates** - Check that changes are reflected in Azure AD
 4. **Check UPDATE behavior** - Are arrays replaced or appended?
@@ -161,7 +161,7 @@ If you want to remove test users:
 
 ```bash
 # Delete test users from CSV or run with different CSV
-npm run provision -- --use-beta --csv config/agents-template.csv --force
+npm run provision -- --csv config/agents-template.csv --force
 ```
 
 Or manually delete in Azure AD Portal.

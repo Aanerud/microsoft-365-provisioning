@@ -10,6 +10,9 @@ const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
+// Skills-only mode: minimum viable connector for debugging
+const SKILLS_ONLY_LABELS = new Set(['personSkills']);
+
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
   ['personAnniversaries', 'stringCollection'],
 ]);
@@ -88,7 +91,7 @@ export class PeopleItemIngester {
     // Add Option B labeled properties only
     for (const prop of optionBProps) {
       const label = prop.peopleDataLabel;
-      if (!label) continue;
+      if (!label || !SKILLS_ONLY_LABELS.has(label)) continue;
       const value = csvRow[prop.name];
       if (!value || value === '') continue;
       const valueType = getLabelValueType(prop.type, label);

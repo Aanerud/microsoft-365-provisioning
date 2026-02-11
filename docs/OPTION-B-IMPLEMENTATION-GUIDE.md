@@ -38,22 +38,26 @@ This is why we use Graph Connectors with people data labels for skills and notes
                   │ Users exist in Entra ID (prerequisite)
                   ↓
 ┌────────────────────────────────────────────────────────────┐
-│ Hybrid Profile Enrichment                                  │
-│ File: src/enrich-profiles-hybrid.ts                        │
+│ Option A: Profile API Enrichment (Delegated Auth)          │
+│ File: src/enrich-profiles.ts                               │
 │                                                             │
-│ PHASE 1: Profile API (Delegated Auth)                      │
 │ - Languages, interests (no connector labels available)     │
-│ - Also writes skills/aboutMe for profile card redundancy   │
 │ - Visible on profile cards, NOT Copilot-searchable         │
+└─────────────────┬───────────────────────────────────────────┘
+                  │
+                  │ Users enriched with languages/interests
+                  ↓
+┌────────────────────────────────────────────────────────────┐
+│ Option B: Graph Connector Pipeline (App-Only Auth)         │
+│ File: src/enrich-connector.ts                              │
 │                                                             │
-│ PHASE 2: Graph Connectors (App-Only Auth)                  │
 │ - skills (personSkills label) → Copilot-searchable!        │
 │ - aboutMe (personNote label) → Copilot-searchable!         │
 │ - projects/awards/certs (people labels) → searchable       │
 │ - Links items to Entra ID users via accountInformation     │
 │ - Extra custom columns ignored (strict-by-doc)             │
 │                                                             │
-│ Output: Profile cards + Copilot search integration         │
+│ Output: Copilot search integration                         │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,8 +71,8 @@ Handled by `provision.ts` - written directly to Entra ID user object:
 - usageLocation, preferredLanguage
 - mail, mobilePhone, businessPhones
 
-### Enrichment Properties (Hybrid)
-Handled by `enrich-profiles-hybrid.ts` - uses optimal method for each data type:
+### Enrichment Properties
+Handled by `enrich-profiles.ts` (Profile API) and `enrich-connector.ts` (Graph Connectors):
 
 **Graph Connector with People Data Labels** (Copilot-searchable):
 | Property | Label | Copilot Searchable |
@@ -105,7 +109,7 @@ To avoid backend OID lookups, Option A now builds an **OID cache** that maps `us
 npm run provision -- --csv config/textcraft-europe.csv
 
 # Then: Enrich profiles
-npm run enrich-profiles -- --csv config/textcraft-europe.csv
+npm run option-b:ingest -- --csv config/textcraft-europe.csv
 ```
 
 **OID cache file**:
@@ -154,7 +158,7 @@ Sarah Chen,sarah@domain.com,Sarah,Chen,CEO,Executive,"['Leadership','Strategy']"
 Create the connection and register the schema (only needs to be done once):
 
 ```bash
-npm run enrich-profiles:setup
+npm run option-b:setup
 ```
 
 **What this does**:
@@ -190,7 +194,7 @@ npm run enrich-profiles:setup
 Ingest enrichment data from your CSV file:
 
 ```bash
-npm run enrich-profiles -- --csv config/textcraft-europe.csv
+npm run option-b:ingest -- --csv config/textcraft-europe.csv
 ```
 
 **What this does**:
@@ -242,7 +246,7 @@ Configuration:
 Preview what would be created without actually ingesting:
 
 ```bash
-npm run enrich-profiles:dry-run
+npm run option-b:dry-run
 ```
 
 **Output**: Shows sample external item structure with all properties.
@@ -290,7 +294,7 @@ Each person is converted to an external item with this structure:
 
 ## Schema Details
 
-The hybrid enrichment schema includes core properties with people data labels:
+The Graph Connector schema includes core properties with people data labels:
 
 ### Core Schema (People Data Labels for Copilot)
 
@@ -501,7 +505,7 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 
 **Solution**:
 1. Verify `PeopleSettings.ReadWrite.All` permission is granted with admin consent
-2. Run `npm run enrich-profiles:setup` to re-register profile source
+2. Run `npm run option-b:setup` to re-register profile source
 3. Check output for "✓ Registered as profile source" and "✓ Added to prioritized profile sources"
 4. Allow 1-24 hours for profile data propagation
 
@@ -516,7 +520,7 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 
 **Cause**: Data written via Profile API with delegated auth is stored as `source.type: "User"` with `isSearchable: false`. Only data from system sources (connectors with people data labels) is Copilot-searchable.
 
-**Solution** (implemented in hybrid enrichment):
+**Solution** (implemented in Option B connector enrichment):
 1. Write skills via Graph Connector with `personSkills` label
 2. Write aboutMe via Graph Connector with `personNote` label
 3. Delete and recreate connector (schema changes require this)
@@ -539,6 +543,42 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 2. Verify `PeopleSettings.ReadWrite.All` application permission
 3. Grant admin consent in Azure Portal
 4. People data connectors are in preview - tenant may need opt-in
+
+### Profile Source Missing `kind` Property
+
+**Symptom**: Profile source appears to be registered, but data doesn't appear in profile cards or Copilot. Debug scripts may show "Profile source exists but missing kind property".
+
+**Cause**: The `kind: 'Connector'` property was not included in the profile source registration payload.
+
+**Solution**:
+1. Delete and recreate the profile source with the correct payload:
+   ```typescript
+   const profileSourcePayload = {
+     sourceId: connectionId,
+     displayName: 'Your Display Name',
+     kind: 'Connector',  // <-- REQUIRED
+     webUrl: 'https://...',
+   };
+   ```
+2. Alternatively, run `npm run option-b:setup` which now includes the `kind` property
+3. See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` Section 11 for details
+
+### Labels Display as `unknownFutureValue`
+
+**Symptom**: When querying schema via API, labels like `personAccount`, `personSkills`, `personNote` display as `unknownFutureValue`.
+
+**Cause**: This is normal behavior when using beta API features. The Microsoft internal systems still recognize the labels correctly.
+
+**Verification**:
+1. Check that connection was created with `contentCategory: 'people'` (via beta API)
+2. Check that schema was registered via beta API
+3. Verify items are being ingested successfully
+4. Wait 6+ hours for indexing, then test with Copilot
+
+**If labels truly aren't working**:
+1. Ensure you used beta API for connection creation (not v1.0)
+2. Delete and recreate the connection with beta API
+3. The v1.0 API ignores `contentCategory: 'people'` and sets it to `uncategorized`
 
 ### CSV Parsing Errors
 
@@ -590,11 +630,13 @@ Notes:
 
 | Command | Description |
 |---------|-------------|
-| `npm run enrich-profiles:setup` | Create connection and register schema (first time only) |
-| `npm run enrich-profiles` | Ingest people data from default CSV |
-| `npm run enrich-profiles -- --csv path/to/file.csv` | Ingest from specific CSV |
-| `npm run enrich-profiles:dry-run` | Preview external items without ingesting |
-| `npm run enrich-profiles -- --connection-id custom-id` | Use custom connection ID |
+| `npm run option-a:enrich` | Profile API enrichment (languages, interests) |
+| `npm run option-a:enrich:dry-run` | Preview Profile API enrichment |
+| `npm run option-b:setup` | Create connection, register schema, and ingest (first time) |
+| `npm run option-b:ingest` | Ingest people data from default CSV |
+| `npm run option-b:ingest -- --csv path/to/file.csv` | Ingest from specific CSV |
+| `npm run option-b:dry-run` | Preview external items without ingesting |
+| `npm run option-b:ingest -- --connection-id custom-id` | Use custom connection ID |
 | `node tools/debug/verify-ingestion-progress.mjs --search-auth delegated ...` | Monitor indexing progress |
 
 ## Automatic Deletion (Orphan Cleanup)
@@ -621,7 +663,7 @@ Option B automatically tracks and cleans up orphaned external items:
 **Example**:
 ```bash
 # Previous CSV had 5 users, now has 3 users (2 removed)
-npm run enrich-profiles -- --csv config/agents-template.csv
+npm run option-b:ingest -- --csv config/agents-template.csv
 
 # Output:
 🔍 Checking for orphaned external items...
@@ -649,7 +691,7 @@ npm run enrich-profiles -- --csv config/agents-template.csv
 To update enrichment data for existing users:
 
 1. Update CSV file with new data
-2. Run `npm run enrich-profiles` again
+2. Run `npm run option-b:ingest` again
 3. External items are **replaced** (PUT operation)
 4. Orphaned items automatically deleted
 
@@ -680,7 +722,7 @@ node delete-connection.mjs
 Then run setup again:
 
 ```bash
-npm run enrich-profiles:setup
+npm run option-b:setup
 ```
 
 ## Performance
@@ -711,10 +753,10 @@ npm run enrich-profiles:setup
 
 ---
 
-**Last Updated**: 2026-01-29
+**Last Updated**: 2026-02-05
 **Status**: ✅ Production Ready (with Copilot searchability via people data labels)
-**Authentication**: Hybrid (Delegated for Profile API, Client Credentials for Connectors)
-**Main File**: `src/enrich-profiles-hybrid.ts`
+**Authentication**: Option A: Delegated (Profile API), Option B: Client Credentials (Connectors)
+**Main File**: `src/enrich-connector.ts` (Option B), `src/enrich-profiles.ts` (Option A enrichment)
 **Sample Data**: `config/textcraft-europe.csv` (95 users)
 
 ## Copilot Searchability Summary

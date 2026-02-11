@@ -7,51 +7,43 @@
 ### Key Capabilities
 
 - **Option A - User Provisioning**: Create M365 users with standard properties
-- **Profile API Enrichment**: Write skills, languages, notes, interests directly to user profiles
-- **Graph Connectors**: Add custom organizational properties (VTeam, CostCenter, etc.)
+- **Profile API Enrichment**: Write languages, interests directly to user profiles (no people data labels)
+- **Graph Connectors**: Add people-labeled properties (skills, aboutMe, certifications, etc.) for Copilot search
 - **License Management**: Automatically assign Microsoft 365 licenses
 - **State Management**: CREATE/UPDATE/NOOP detection to avoid duplicate operations
 
 ## Architecture
 
-### Hybrid Enrichment Approach
+### Option A / Option B Architecture
 
-The tool uses a **hybrid approach** for profile enrichment, using the optimal method for each data type:
+The tool has two independent pipelines for enrichment:
 
 ```
 CSV Data
     │
-    ├─► Option A: User Provisioning
-    │   - Creates Entra ID accounts
+    ├─► Option A: User Provisioning + Profile API Enrichment
+    │   - Creates Entra ID accounts (src/provision.ts)
     │   - Sets standard properties (name, email, jobTitle, etc.)
     │   - Assigns M365 licenses
+    │   - Profile API: languages, interests (src/enrich-profiles.ts)
     │   - Auth: Delegated (browser login)
-    │   - API: POST /users, PATCH /users/{id}
     │
-    ├─► Profile API (Direct POST)
-    │   - skills → POST /users/{id}/profile/skills
-    │   - languages → POST /users/{id}/profile/languages
-    │   - aboutMe → POST /users/{id}/profile/notes
-    │   - interests → POST /users/{id}/profile/interests
-    │   - certifications, awards, projects, etc.
-    │   - Auth: Delegated (browser login)
-    │   - API: POST /users/{id}/profile/{collection}
-    │
-    └─► Graph Connectors (Custom Properties)
-        - VTeam, CostCenter, BenefitPlan, BuildingAccess, etc.
-        - Any custom organizational property
+    └─► Option B: Graph Connector Pipeline
+        - skills (personSkills), aboutMe (personNote)
+        - certifications, awards, projects, etc.
         - Auth: Application (client secret)
+        - File: src/enrich-connector.ts
         - API: PUT /external/connections/{id}/items/{id}
 ```
 
-### Why Hybrid?
+### Data Routing
 
-| Data Type | Method | Why |
+| Data Type | Script | Why |
 |-----------|--------|-----|
-| **Standard User Fields** | Option A (Entra ID) | Native identity management |
-| **Profile Fields** (languages, interests) | Profile API only | No people data labels exist for Copilot |
-| **Profile Fields** (skills, aboutMe) | Profile API + Connectors | Redundant for both profile cards AND Copilot search |
-| **Custom Org Fields** (VTeam, CostCenter) | Graph Connectors | Only way to add custom searchable properties |
+| **Standard User Fields** | Option A (`provision.ts`) | Native identity management |
+| **Profile Fields** (languages, interests) | Option A (`enrich-profiles.ts`) | No people data labels exist for Copilot |
+| **Profile Fields** (skills, aboutMe) | Option B (`enrich-connector.ts`) | Have people data labels (personSkills, personNote) for Copilot search |
+| **Custom Org Fields** (VTeam, CostCenter) | Option B (`enrich-connector.ts`) | Only way to add custom searchable properties |
 
 ### Graph Connectors for Copilot Searchability
 
@@ -63,6 +55,26 @@ Graph Connectors with **people data labels** enable Copilot to search for people
 - Wait 6+ hours after ingestion for Microsoft 365 to index
 
 See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` for complete details.
+
+#### Critical Requirements
+
+1. **Profile Source Registration - `kind` Property**
+
+   When registering a connector as a profile source, the `kind: 'Connector'` property is **REQUIRED**:
+   ```typescript
+   // CORRECT - kind is required
+   const profileSourcePayload = {
+     sourceId: connectionId,
+     displayName: 'Display Name',
+     kind: 'Connector',  // <-- REQUIRED per Microsoft docs
+     webUrl: 'https://...',
+   };
+   ```
+   Without this property, profile data may not appear in profile cards or Copilot.
+
+2. **Beta API for Connection Creation**
+
+   The `contentCategory: 'people'` parameter is only supported by the beta API. Using v1.0 will result in `contentCategory: 'uncategorized'`.
 
 ### Profile API Collections (20 Total)
 
@@ -145,21 +157,24 @@ AUTH_SERVER_PORT=5544
 
 ## npm Scripts
 
-### Hybrid Enrichment (Recommended)
+### Option A: Provisioning + Profile API Enrichment
 ```bash
-npm run enrich              # Run both Profile API and Graph Connectors
-npm run enrich:setup        # Setup Graph Connector + run enrichment
-npm run enrich:dry-run      # Preview without making changes
-npm run enrich:profile-api-only  # Only Profile API (skills, languages, etc.)
-npm run enrich:connector-only    # Only Graph Connectors (custom properties)
+npm run provision                # Create users from CSV
+npm run provision:beta           # Use beta Graph API
+npm run option-a:enrich          # Profile API enrichment (languages, interests)
+npm run option-a:enrich:dry-run  # Preview without making changes
+npm run list-users               # List provisioned users
+npm run update-licenses          # Add missing licenses
 ```
 
-### User Provisioning (Option A)
+### Option B: Graph Connector Pipeline
 ```bash
-npm run provision           # Create users from CSV
-npm run provision:beta      # Use beta Graph API
-npm run list-users          # List provisioned users
-npm run update-licenses     # Add missing licenses
+npm run option-b:setup           # Create connection + schema + ingest
+npm run option-b:ingest          # Ingest items (connection must exist)
+npm run option-b:dry-run         # Preview without making changes
+npm run enrich:wait              # Wait for schema provisioning
+npm run enrich:delete-connector  # Delete connector connection
+npm run build-oid-cache          # Build OID cache from Graph
 ```
 
 ### Utilities
@@ -176,11 +191,11 @@ npm run reset-tenant:confirm # Delete all non-admin users
 M365-Agent-Provisioning/
 ├── src/
 │   ├── provision.ts              # Option A - User provisioning
-│   ├── enrich-profiles-hybrid.ts # Hybrid enrichment (Profile API + Connectors)
-│   ├── enrich-profiles-direct.ts # Profile API only
-│   ├── enrich-profiles.ts        # Graph Connectors only
+│   ├── enrich-profiles.ts        # Option A - Profile API enrichment (languages, interests)
+│   ├── enrich-connector.ts       # Option B - Graph Connector pipeline (skills, aboutMe, etc.)
 │   ├── profile-writer.ts         # Profile API writer class
 │   ├── graph-client.ts           # Microsoft Graph client
+│   ├── oid-cache.ts              # OID cache (UPN → object ID mapping)
 │   ├── auth/
 │   │   ├── browser-auth-server.ts
 │   │   └── token-cache.ts
@@ -202,9 +217,11 @@ M365-Agent-Provisioning/
 
 | File | Purpose |
 |------|---------|
-| `src/enrich-profiles-hybrid.ts` | Main enrichment - Profile API + Connectors |
-| `src/profile-writer.ts` | Profile API writer (skills, languages, notes, etc.) |
 | `src/provision.ts` | User provisioning (Option A) |
+| `src/enrich-profiles.ts` | Profile API enrichment - languages, interests (Option A) |
+| `src/enrich-connector.ts` | Graph Connector pipeline - skills, aboutMe, etc. (Option B) |
+| `src/profile-writer.ts` | Profile API writer (languages, interests, etc.) |
+| `src/oid-cache.ts` | OID cache (UPN → object ID mapping) |
 | `src/people-connector/connection-manager.ts` | Graph Connector connection + profile source registration |
 | `src/people-connector/item-ingester.ts` | Graph Connector item ingestion |
 | `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` | **Deep understanding of people data connectors** |
@@ -221,22 +238,21 @@ cp .env.example .env
 # 2. Create users (Option A)
 npm run provision -- --csv config/users.csv
 
-# 3. Enrich profiles with setup (creates Graph Connector)
-npm run enrich:setup -- --csv config/users.csv
+# 3. Enrich via Profile API (Option A - languages, interests)
+npm run option-a:enrich -- --csv config/users.csv
+
+# 4. Setup Graph Connector + ingest (Option B - skills, aboutMe, etc.)
+npm run option-b:setup -- --csv config/users.csv --connection-id m365people3
 ```
 
 ### Regular Enrichment
 
 ```bash
-# Update profiles from CSV
-npm run enrich -- --csv config/users.csv
-```
+# Update Profile API data (languages, interests)
+npm run option-a:enrich -- --csv config/users.csv
 
-### Profile API Only (No Custom Properties)
-
-```bash
-# If you only need skills, languages, notes, interests
-npm run enrich:profile-api-only -- --csv config/users.csv
+# Re-ingest connector data (skills, aboutMe, etc.)
+npm run option-b:ingest -- --csv config/users.csv --connection-id m365people3
 ```
 
 ## Known Issues
@@ -270,5 +286,5 @@ The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 ta
 
 ---
 
-**Last Updated**: 2026-01-27
-**Version**: 3.2.0 (Fixed beta API requirement for people data connectors)
+**Last Updated**: 2026-02-06
+**Version**: 4.0.0 (Option A/B split: standalone Profile API enrichment + Graph Connector pipeline)

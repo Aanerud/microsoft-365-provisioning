@@ -210,8 +210,8 @@ Without the proper role, provisioning will fail with "Insufficient privileges" e
 **Cause**: Beta endpoints not available in tenant or temporarily unavailable
 
 **Solution**:
-- Tool automatically falls back to v1.0 (extended attributes will be omitted)
-- No action required - provisioning continues without beta features
+- Beta endpoints are required; there is no v1.0 fallback
+- Verify tenant supports beta endpoints and required permissions
 - Check [Microsoft Graph changelog](https://developer.microsoft.com/en-us/graph/changelog) for updates
 
 ## Next Steps

@@ -73,19 +73,13 @@ export interface GraphClientConfig {
   clientId?: string;
   clientSecret?: string;
 
-  // Optional: Enable beta endpoints
-  useBeta?: boolean;
 }
 
 export class GraphClient {
   private client!: Client;
   private betaClient!: Client;
   private credential?: ClientSecretCredential;
-  private useBeta: boolean;
-
   constructor(config?: GraphClientConfig) {
-    this.useBeta = config?.useBeta || process.env.USE_BETA_ENDPOINTS === 'true' || false;
-
     // Priority 1: Use provided access token (MSAL)
     if (config?.accessToken) {
       this.initializeWithAccessToken(config.accessToken);
@@ -124,7 +118,7 @@ export class GraphClient {
 
     this.client = Client.init({
       authProvider,
-      defaultVersion: 'v1.0',
+      defaultVersion: 'beta',
     });
 
     this.betaClient = Client.init({
@@ -145,7 +139,7 @@ export class GraphClient {
 
     this.client = Client.initWithMiddleware({
       authProvider,
-      defaultVersion: 'v1.0',
+      defaultVersion: 'beta',
     });
 
     this.betaClient = Client.initWithMiddleware({
@@ -155,10 +149,10 @@ export class GraphClient {
   }
 
   /**
-   * Get the appropriate client (v1.0 or beta)
+   * Get the beta client (beta-only enforced)
    */
-  private getClient(forceBeta: boolean = false): Client {
-    return (this.useBeta || forceBeta) ? this.betaClient : this.client;
+  private getClient(_forceBeta: boolean = false): Client {
+    return this.betaClient;
   }
 
   /**
@@ -234,7 +228,7 @@ export class GraphClient {
       },
     };
 
-    // Add beta fields if provided and beta is enabled
+    // Add beta fields if provided
     const hasBetaFields = params.employeeType || params.companyName || params.officeLocation;
     if (hasBetaFields) {
       if (params.employeeType) userParams.employeeType = params.employeeType;
@@ -243,8 +237,8 @@ export class GraphClient {
     }
 
     try {
-      // Use beta client if beta fields are provided
-      const client = hasBetaFields ? this.getClient(true) : this.getClient(false);
+      // Always use beta endpoints
+      const client = this.getClient(true);
       const user = await client.api('/users').post(userParams);
 
       const betaIndicator = hasBetaFields ? ' [beta]' : '';
@@ -255,16 +249,6 @@ export class GraphClient {
         console.log(`⚠ User already exists: ${params.email}`);
         const existingUser = await this.getUserByEmail(params.email);
         return existingUser;
-      }
-
-      // If beta endpoint failed, try falling back to v1.0
-      if (hasBetaFields && error.statusCode === 400) {
-        console.warn(`⚠ Beta endpoint failed, falling back to v1.0 without extended attributes`);
-        return await this.createUser({
-          displayName: params.displayName,
-          email: params.email,
-          password: params.password,
-        });
       }
 
       throw error;
@@ -618,7 +602,7 @@ export class GraphClient {
       });
 
       try {
-        // Use beta client for employeeHireDate or other beta-only fields
+        // Use beta client (beta-only enforced)
         const hasBetaFields = batch.some(u => u.employeeHireDate);
         const client = hasBetaFields ? this.getClient(true) : this.getClient(false);
 
@@ -694,7 +678,7 @@ export class GraphClient {
       }));
 
       try {
-        // Use beta client if beta-only fields are present
+        // Use beta client (beta-only enforced)
         const hasBetaFields = batch.some(u =>
           Object.keys(u.updates).some(key =>
             ['employeeHireDate', 'employeeLeaveDateTime', 'employeeOrgData', 'preferredDataLocation'].includes(key)
@@ -815,7 +799,7 @@ export class GraphClient {
   async assignManager(userId: string, managerId: string): Promise<void> {
     try {
       await this.client.api(`/users/${userId}/manager/$ref`).put({
-        '@odata.id': `https://graph.microsoft.com/v1.0/users/${managerId}`,
+        '@odata.id': `https://graph.microsoft.com/beta/users/${managerId}`,
       });
       console.log(`✓ Assigned manager for user: ${userId}`);
     } catch (error: any) {
@@ -883,7 +867,7 @@ export class GraphClient {
         method: 'PUT',
         url: `/users/${assignment.userId}/manager/$ref`,
         body: {
-          '@odata.id': `https://graph.microsoft.com/v1.0/users/${assignment.managerId}`,
+          '@odata.id': `https://graph.microsoft.com/beta/users/${assignment.managerId}`,
         },
         headers: {
           'Content-Type': 'application/json',

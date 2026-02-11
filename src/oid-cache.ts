@@ -167,7 +167,7 @@ export async function ensureOidCacheWithAuth(options: {
   });
 
   const authResult = await authServer.authenticate();
-  const graphClient = new GraphClient({ accessToken: authResult.accessToken, useBeta: true });
+  const graphClient = new GraphClient({ accessToken: authResult.accessToken });
 
   const cache = await buildOidCacheWithClient({
     csvPath: options.csvPath,

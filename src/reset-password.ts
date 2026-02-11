@@ -37,7 +37,7 @@ class PasswordResetTool {
     try {
       // Find user
       const userResponse = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}`,
+        `https://graph.microsoft.com/beta/users/${encodeURIComponent(email)}`,
         {
           headers: { Authorization: `Bearer ${this.accessToken}` },
         }
@@ -52,7 +52,7 @@ class PasswordResetTool {
 
       // Reset password
       const resetResponse = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${user.id}`,
+        `https://graph.microsoft.com/beta/users/${user.id}`,
         {
           method: 'PATCH',
           headers: {

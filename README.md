@@ -330,11 +330,16 @@ npm run enrich-profiles:dry-run        # Preview enrichment
 # Ingestion Verification
 node tools/debug/verify-ingestion-progress.mjs --search-auth delegated --connection-id m365people --csv config/textcraft-europe.csv --query "*"
 
+# Debug & Diagnostics
+npm run debug:checklist -- --tenant-id <TENANT_ID> --connection-id <CONNECTION_ID>
+
 # Utilities
 npm run logout                         # Clear cached auth tokens
 npm run test-connection                # Verify Graph API access
 npm run build                          # Compile TypeScript
 ```
+
+Debug workflow references: [docs/DEBUG-PLAYBOOK.md](docs/DEBUG-PLAYBOOK.md) and [debug/README.md](debug/README.md)
 
 ---
 

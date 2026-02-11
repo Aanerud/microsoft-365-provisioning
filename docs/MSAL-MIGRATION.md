@@ -42,7 +42,6 @@ const authResult = await auth.getAccessToken();
 
 const graphClient = new GraphClient({
   accessToken: authResult.accessToken,
-  useBeta: true,
 });
 
 await graphClient.createUser(params);
@@ -219,11 +218,8 @@ Loading agents from config/agents-template.csv...
 ### Step 6: Test Beta Endpoints
 
 ```bash
-# Provision with beta features
-npm run provision:beta
-
-# Or with flag
-npm run provision -- --use-beta
+# Provision with beta endpoints (always on)
+npm run provision
 ```
 
 **Expected output:**
@@ -255,7 +251,6 @@ The code maintains backward compatibility:
 const graphClient = new GraphClient({
   // Method 1: MSAL (new)
   accessToken: token,
-  useBeta: true,
 });
 
 // Method 2: Client Secret (legacy - still works)
@@ -281,7 +276,7 @@ Use this checklist to verify migration:
 - [ ] Browser authentication completes successfully
 - [ ] Token cached in `~/.m365-provision/`
 - [ ] Subsequent runs use cached token
-- [ ] Beta endpoints work with `--use-beta` flag
+- [ ] Beta endpoints work (default)
 - [ ] User provisioning completes successfully
 - [ ] License assignment works
 - [ ] MCP tokens generated
@@ -335,7 +330,7 @@ npm run provision  # Will re-authenticate
 
 **Solution**:
 - Verify `USE_BETA_ENDPOINTS=true` in `.env`
-- Tool will automatically fall back to v1.0
+- This project does not fall back to v1.0
 - Check Microsoft Graph changelog for beta status
 
 ## Rollback Plan

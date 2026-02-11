@@ -132,8 +132,8 @@ AZURE_CLIENT_SECRET=your-client-secret  # For Option B only
 LICENSE_SKU_ID=your-license-sku
 USER_DOMAIN=yourdomain.onmicrosoft.com
 
-# Optional
-USE_BETA_ENDPOINTS=true
+# Required
+USE_BETA_ENDPOINTS=true  # Beta endpoints are enforced
 AUTH_SERVER_PORT=5544
 ```
 
@@ -162,6 +162,7 @@ AUTH_SERVER_PORT=5544
 - Option A issues: See [OPTION-A-QUICK-START.md](./OPTION-A-QUICK-START.md)
 - Option B issues: See [OPTION-B-IMPLEMENTATION-GUIDE.md](./OPTION-B-IMPLEMENTATION-GUIDE.md)
 - Authentication: See [PEOPLE-DATA-AUTH-SOLUTION.md](./PEOPLE-DATA-AUTH-SOLUTION.md)
+- Debug checklist: See [DEBUG-PLAYBOOK.md](./DEBUG-PLAYBOOK.md) and [debug/README.md](../debug/README.md)
 
 ## What's Working
 

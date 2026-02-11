@@ -71,7 +71,7 @@ Create Entra ID user accounts with standard Microsoft 365 properties.
   - Organization.Read.All
 
 ### Operations
-- Uses Microsoft Graph v1.0 and beta endpoints
+- Uses Microsoft Graph beta endpoints (enforced)
 - Batch operations (20 users per batch)
 - State-based diff detection (CREATE/UPDATE/NOOP)
 - Manager relationship assignment

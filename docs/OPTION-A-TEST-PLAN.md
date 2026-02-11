@@ -45,10 +45,10 @@ are handled by the connector pipeline and should not be validated in this plan.
 **Steps**:
 ```bash
 # Ensure users don't exist
-npm run provision -- --use-beta --csv config/agents-test-maxprops.csv --dry-run
+npm run provision -- --csv config/agents-test-maxprops.csv --dry-run
 
 # Create users
-npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
+npm run provision -- --csv config/agents-test-maxprops.csv
 ```
 
 **Expected Results**:
@@ -75,7 +75,7 @@ npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
 1. Edit CSV - change otherMails values, update faxNumber
 2. Run provision again:
    ```bash
-   npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
+   npm run provision -- --csv config/agents-test-maxprops.csv
    ```
 
 **Expected Results**:
@@ -90,7 +90,7 @@ npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
 1. Edit CSV - remove some values (empty arrays, blank strings)
 2. Run provision:
    ```bash
-   npm run provision -- --use-beta --csv config/agents-test-maxprops.csv
+   npm run provision -- --csv config/agents-test-maxprops.csv
    ```
 
 **Expected Results**:
