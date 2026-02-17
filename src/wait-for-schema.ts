@@ -8,7 +8,11 @@ dotenv.config();
 async function waitForSchema() {
   const tenantId = process.env.AZURE_TENANT_ID || '';
   const clientId = process.env.AZURE_CLIENT_ID || '';
-  const connectionId = 'm365provisionpeople';
+  const args = process.argv.slice(2);
+  let connectionId = 'm365people3';
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--connection-id') connectionId = args[++i];
+  }
   const clientSecret = process.env.AZURE_CLIENT_SECRET || '';
 
   if (!tenantId || !clientId || !clientSecret) {
@@ -41,7 +45,7 @@ async function waitForSchema() {
 
       if (state === 'ready') {
         console.log('\n✅ Schema is READY! You can now run the ingestion.');
-        console.log('\nRun: npm run enrich-profiles -- --csv config/agents-test-enrichment.csv');
+        console.log(`\nRun: npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id ${connectionId}`);
         process.exit(0);
       } else if (state === 'failed') {
         console.error(`\n❌ Schema registration FAILED: ${schemaStatus?.failureReason || 'Unknown reason'}`);

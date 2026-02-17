@@ -109,34 +109,54 @@ export class PeopleConnectionManager {
   }
 
   /**
-   * Wait for schema to be in 'ready' state
+   * Wait for schema to be in 'ready' state.
+   * Polls every 5s for up to 10 minutes. Transient fetch errors are retried.
    */
-  private async waitForSchemaReady(maxWaitMs: number = 300000): Promise<void> {
+  private async waitForSchemaReady(maxWaitMs: number = 600000): Promise<void> {
     const startTime = Date.now();
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
 
     while (Date.now() - startTime < maxWaitMs) {
-      const schemaStatus = await this.getSchema();
-      let state = schemaStatus?.state ?? schemaStatus?.status;
-      let failureReason = schemaStatus?.failureReason;
+      try {
+        const schemaStatus = await this.getSchema();
+        let state = schemaStatus?.state ?? schemaStatus?.status;
+        let failureReason = schemaStatus?.failureReason;
 
-      if (!state) {
-        const connection = await this.getConnection();
-        state = connection.state;
-        failureReason = connection.failureReason;
+        if (!state) {
+          const connection = await this.getConnection();
+          state = connection.state;
+          failureReason = connection.failureReason;
+        }
+
+        consecutiveErrors = 0; // Reset on success
+
+        if (state === 'ready') {
+          console.log('✓ Schema is ready');
+          return;
+        } else if (state === 'failed') {
+          throw new Error(`Schema registration failed: ${failureReason || 'Unknown reason'}`);
+        }
+
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`  Schema state: ${state} (${elapsed}s elapsed), waiting...`);
+      } catch (error: any) {
+        // Let actual schema failures propagate
+        if (error.message?.startsWith('Schema registration failed')) throw error;
+
+        consecutiveErrors++;
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`  Transient error polling schema (${elapsed}s elapsed): ${error.message}`);
+
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          throw new Error(`Schema polling failed after ${maxConsecutiveErrors} consecutive errors: ${error.message}`);
+        }
       }
 
-      if (state === 'ready') {
-        console.log('✓ Schema is ready');
-        return;
-      } else if (state === 'failed') {
-        throw new Error(`Schema registration failed: ${failureReason || 'Unknown reason'}`);
-      }
-
-      console.log(`  Schema state: ${state}, waiting...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    throw new Error('Schema registration timeout');
+    throw new Error('Schema registration timeout (10 minutes). Check Azure Portal > Microsoft Search > Connectors for status.');
   }
 
   /**
@@ -224,13 +244,30 @@ export class PeopleConnectionManager {
       try {
         // Must use beta client - this endpoint is not available in v1.0
         await this.betaClient.api('/admin/people/profileSources').post(profileSourcePayload);
-        console.log('✓ Registered as profile source');
+        console.log('✓ Registered as profile source (with kind: Connector)');
         registrationSucceeded = true;
       } catch (error: any) {
-        // 409 Conflict means already registered
+        // 409 Conflict means already registered - verify 'kind' is set
         if (error.statusCode === 409) {
-          console.log('✓ Already registered as profile source');
           registrationSucceeded = true;
+          try {
+            const sources = await this.betaClient.api('/admin/people/profileSources').get();
+            const existing = sources.value?.find((s: any) => s.sourceId === this.connectionId);
+            if (existing && !existing.kind) {
+              console.log('⚠ Existing profile source is MISSING kind property - updating...');
+              await this.betaClient
+                .api(`/admin/people/profileSources(sourceId='${this.connectionId}')`)
+                .patch({ kind: 'Connector' });
+              console.log('✓ Updated profile source with kind: Connector');
+            } else if (existing) {
+              console.log(`✓ Already registered as profile source (kind: ${existing.kind})`);
+            } else {
+              console.log('✓ Already registered as profile source');
+            }
+          } catch (verifyError: any) {
+            // Non-fatal: we got 409, so the source exists. Log the verify failure but continue.
+            console.log('✓ Already registered as profile source (could not verify kind property)');
+          }
         } else if (error.statusCode === 403) {
           console.warn('⚠ Permission denied (403) for profile source registration');
           console.warn('  Missing PeopleSettings.ReadWrite.All application permission');
@@ -268,22 +305,50 @@ export class PeopleConnectionManager {
         const settingsId = settings.id;
         const currentSources: string[] = settings.prioritizedSourceUrls || [];
 
+        // Clean up stale profile source URLs from deleted connections.
+        // IMPORTANT: Only validate sources that look like external connector IDs
+        // (alphanumeric, e.g. "m365people14"). Non-connector sources like the AAD
+        // default (UUID format "4ce763dd-...") must be preserved — they are internal
+        // Microsoft sources, not external connections, and removing them breaks prioritization.
+        const CONNECTOR_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
+        const validSources: string[] = [];
+        for (const url of currentSources) {
+          const match = url.match(/sourceId='([^']+)'/);
+          if (match && match[1] !== this.connectionId && CONNECTOR_ID_PATTERN.test(match[1])) {
+            // This looks like an external connector ID — verify it still exists
+            try {
+              await this.betaClient.api(`/external/connections/${match[1]}`).get();
+              validSources.push(url); // Connection exists, keep it
+            } catch {
+              console.log(`  Removing stale prioritized source: ${match[1]} (connection deleted)`);
+              // Connection doesn't exist, skip it
+            }
+          } else {
+            // Our own connection, or a non-connector source (AAD, etc.) — always keep
+            validSources.push(url);
+          }
+        }
+
         // Check if already in prioritized list (match by connection ID, not exact URL)
-        const alreadyPrioritized = currentSources.some(url => url.includes(this.connectionId));
+        const alreadyPrioritized = validSources.some(url => url.includes(this.connectionId));
 
         if (!alreadyPrioritized) {
           // Add to front of priority list (highest priority = index 0)
-          const updatedSources = [sourceUrl, ...currentSources];
+          const updatedSources = [sourceUrl, ...validSources];
 
           // PATCH the specific settings item by ID
           await this.betaClient.api(`/admin/people/profilePropertySettings/${settingsId}`).patch({
             prioritizedSourceUrls: updatedSources,
           });
           console.log('✓ Added to prioritized profile sources (highest priority)');
-          // Prioritization succeeded
+        } else if (validSources.length < currentSources.length) {
+          // Already prioritized but stale entries were cleaned up
+          await this.betaClient.api(`/admin/people/profilePropertySettings/${settingsId}`).patch({
+            prioritizedSourceUrls: validSources,
+          });
+          console.log('✓ Already in prioritized profile sources (cleaned up stale entries)');
         } else {
           console.log('✓ Already in prioritized profile sources');
-          // Already prioritized
         }
       } catch (error: any) {
         // Profile property settings might not exist yet in some tenants
@@ -297,6 +362,38 @@ export class PeopleConnectionManager {
           console.warn(`⚠ Failed to update prioritization: ${error.message}`);
           // Don't throw - registration succeeded, prioritization is optional
         }
+      }
+
+      // Step 3: Wait for profile source propagation
+      // Microsoft's internal pipeline must find the profile source before processing items.
+      // Without this delay, items may be "transformed but not exported" to user profiles.
+      // Ref: Microsoft sample uses separate commands (setup → register → sync);
+      //      production guidance recommends separate applications for registration vs ingestion.
+      if (registrationSucceeded) {
+        console.log('');
+        console.log('⏳ Waiting for profile source to propagate to Microsoft backend...');
+        console.log('  (Microsoft internal pipeline must find the profile source before items are processed)');
+        const propagationWaitMs = 60000; // 60 seconds
+        const startWait = Date.now();
+        while (Date.now() - startWait < propagationWaitMs) {
+          const elapsed = Math.round((Date.now() - startWait) / 1000);
+          const remaining = Math.round((propagationWaitMs - (Date.now() - startWait)) / 1000);
+          process.stdout.write(`\r  Waiting... ${elapsed}s / ${Math.round(propagationWaitMs / 1000)}s (${remaining}s remaining)  `);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          // Verify profile source is accessible
+          try {
+            const sources = await this.betaClient.api('/admin/people/profileSources').get();
+            const ours = sources.value?.find((s: any) => s.sourceId === this.connectionId);
+            if (ours) {
+              // Profile source found — it's propagated
+              break;
+            }
+          } catch {
+            // Ignore transient errors, keep waiting
+          }
+        }
+        console.log('');
+        console.log('✓ Profile source propagation wait complete');
       }
 
       return registrationSucceeded;

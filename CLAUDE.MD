@@ -76,6 +76,35 @@ See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` for complete details.
 
    The `contentCategory: 'people'` parameter is only supported by the beta API. Using v1.0 will result in `contentCategory: 'uncategorized'`.
 
+3. **Profile Source Propagation — Separate Registration from Ingestion**
+
+   Microsoft's internal pipeline (TSS — Tenant Settings Service) must discover the profile source before it can process ingested items. If items are ingested before propagation completes, the internal logs will show:
+   - `ProfileSourceRegistrar: Failed to retrieve settings from TSS, statusCode=Unauthorized`
+   - `Profile source registration failed for item, but transformation will continue`
+   - CAPIv2 exports with `profileSyncEnabled=False` (data never reaches user profiles)
+
+   **Our fix**: `connection-manager.ts` waits 60 seconds after registration and polls `GET /admin/people/profileSources` to confirm the source is accessible before returning. This matches Microsoft's recommendation to use separate commands for setup vs ingestion.
+
+4. **Prioritized Source Cleanup — NEVER Remove Non-Connector Sources**
+
+   The `prioritizedSourceUrls` array contains URLs for ALL profile sources, including Microsoft's internal AAD default source (UUID format like `4ce763dd-9214-4eff-af7c-da491cc3782d`). When cleaning up stale entries:
+
+   **CRITICAL**: Only validate sources that look like external connector IDs (alphanumeric, e.g. `m365people14`). UUID-format sourceIds are internal Microsoft sources — calling `GET /external/connections/{uuid}` returns 404, but deleting them from the prioritized list will break profile sync entirely. Microsoft may silently revert a PATCH that removes the AAD default source, meaning our connector URL also gets lost.
+
+   ```typescript
+   // WRONG — treats AAD source "4ce763dd-..." as stale and removes it
+   await this.betaClient.api(`/external/connections/${sourceId}`).get(); // 404!
+
+   // CORRECT — only validate alphanumeric connector IDs
+   const CONNECTOR_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
+   if (CONNECTOR_ID_PATTERN.test(sourceId)) { /* validate */ }
+   else { /* always keep — internal Microsoft source */ }
+   ```
+
+5. **`profileSyncEnabled` Flag — The Key Indicator**
+
+   In Microsoft's internal debug logs (Admin Portal CSV export), the CAPIv2 export entries show `profileSyncEnabled=True/False`. This flag indicates whether Microsoft's backend will sync connector data to user profiles. If it stays `False` after 6+ hours, the connection is missing from prioritized sources or the profile source wasn't propagated before ingestion.
+
 ### Profile API Collections (20 Total)
 
 These can be written directly via `POST /users/{id}/profile/{collection}`:
@@ -286,5 +315,5 @@ The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 ta
 
 ---
 
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-16
 **Version**: 4.0.0 (Option A/B split: standalone Profile API enrichment + Graph Connector pipeline)

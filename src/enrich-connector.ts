@@ -99,10 +99,12 @@ async function loadConnectorRows(csvPath: string): Promise<{
 
   const csvColumns = records.length > 0 ? Object.keys(records[0]) : [];
   const labeledOptionBFields = new Set(getLabeledOptionBFieldNames());
+  const customPropertyNames = new Set(PeopleSchemaBuilder.getCustomPropertyNames());
   const ignoredFields = csvColumns.filter(col =>
     !STANDARD_USER_FIELDS.has(col) &&
     !PROFILE_API_FIELDS.has(col) &&
-    !labeledOptionBFields.has(col)
+    !labeledOptionBFields.has(col) &&
+    !customPropertyNames.has(col)
   );
 
   return { rows: records, csvColumns, ignoredFields };
@@ -119,16 +121,22 @@ async function enrichViaConnector(
   console.log('\n' + '='.repeat(60));
   console.log('Option B: Graph Connector Enrichment (Copilot-Searchable)');
   console.log('='.repeat(60));
-  console.log('Writing people-labeled properties only (strict-by-doc).');
+  console.log('Writing people-labeled + custom searchable properties.');
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
+  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames();
+  const customFields = customPropertyNames.filter(field => csvColumns.includes(field));
   if (connectorFields.length > 0) {
-    console.log(`  - Connector fields: ${connectorFields.join(', ')}`);
-  } else {
+    console.log(`  - Labeled fields: ${connectorFields.join(', ')}`);
+  }
+  if (customFields.length > 0) {
+    console.log(`  - Custom fields: ${customFields.join(', ')}`);
+  }
+  if (connectorFields.length === 0 && customFields.length === 0) {
     console.log('  - Connector fields: (none detected in CSV)');
   }
   if (ignoredFields.length > 0) {
-    console.log(`  - Ignored (no people label): ${ignoredFields.join(', ')}`);
+    console.log(`  - Ignored: ${ignoredFields.join(', ')}`);
   }
   console.log('');
 
@@ -141,12 +149,14 @@ async function enrichViaConnector(
 
     await connectionManager.createConnection(
       'M365 Provision People Data',
-      'People data enrichment for Copilot search (labeled properties only)'
+      'People data enrichment for Copilot search (labeled + custom properties)'
     );
 
-    // Register schema with people data labels only
+    // Register schema with people data labels + custom properties
     const schema = PeopleSchemaBuilder.buildPeopleSchema();
-    console.log(`Schema includes ${schema.length} labeled properties (personAccount + ${schema.length - 1} people labels).`);
+    const labeledCount = schema.filter((p: any) => p.labels).length;
+    const customCount = schema.length - labeledCount;
+    console.log(`Schema: ${labeledCount} labeled properties + ${customCount} custom searchable properties.`);
     await connectionManager.registerSchema(schema);
 
     // Verify schema labels were registered correctly
@@ -160,9 +170,10 @@ async function enrichViaConnector(
 
   const itemIngester = new PeopleItemIngester(betaClient, options.connectionId, logger);
 
-  // Create external items for profiles with labeled data
+  // Create external items for profiles with labeled or custom property data
+  const allConnectorFields = [...labeledOptionBFields, ...customPropertyNames];
   const items = connectorRows
-    .filter(row => labeledOptionBFields.some(field => row[field] && row[field] !== ''))
+    .filter(row => allConnectorFields.some(field => row[field] && row[field] !== ''))
     .map(row => itemIngester.createExternalItem(row));
 
   const dumpItemEmail = process.env.DUMP_CONNECTOR_ITEM_EMAIL?.toLowerCase();
@@ -242,10 +253,15 @@ async function run(): Promise<void> {
   console.log(`Loaded ${connectorRows.length} profiles`);
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
+  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames();
+  const customFields = customPropertyNames.filter(field => csvColumns.includes(field));
   console.log('Field routing:');
-  console.log(`  Connector (people labels): ${connectorFields.join(', ') || '(none detected)'}`);
+  console.log(`  Labeled: ${connectorFields.join(', ') || '(none detected)'}`);
+  if (customFields.length > 0) {
+    console.log(`  Custom: ${customFields.join(', ')}`);
+  }
   if (ignoredFields.length > 0) {
-    console.log(`  Ignored (no people label): ${ignoredFields.join(', ')}`);
+    console.log(`  Ignored: ${ignoredFields.join(', ')}`);
   }
   console.log('');
 

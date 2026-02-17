@@ -1,5 +1,6 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { getOptionBProperties } from '../schema/user-property-schema.js';
+import { PeopleSchemaBuilder } from './schema-builder.js';
 import { Logger } from '../utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -10,8 +11,8 @@ const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
-// Skills-only mode: minimum viable connector for debugging
-const SKILLS_ONLY_LABELS = new Set(['personSkills']);
+// Must match ENABLED_LABELS in schema-builder.ts
+const ENABLED_LABELS = new Set(['personSkills']);
 
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
   ['personAnniversaries', 'stringCollection'],
@@ -88,10 +89,10 @@ export class PeopleItemIngester {
       accountInformation: JSON.stringify(accountInformation)
     };
 
-    // Add Option B labeled properties only
+    // Add Option B labeled properties
     for (const prop of optionBProps) {
       const label = prop.peopleDataLabel;
-      if (!label || !SKILLS_ONLY_LABELS.has(label)) continue;
+      if (!label || !ENABLED_LABELS.has(label)) continue;
       const value = csvRow[prop.name];
       if (!value || value === '') continue;
       const valueType = getLabelValueType(prop.type, label);
@@ -113,6 +114,14 @@ export class PeopleItemIngester {
       } else {
         // Other single-value labels (e.g., personWebSite) use: {"displayName":"..."}
         properties[prop.name] = JSON.stringify({ displayName: value });
+      }
+    }
+
+    // Add custom properties (plain string values, no serialization needed)
+    for (const customName of PeopleSchemaBuilder.getCustomPropertyNames()) {
+      const value = csvRow[customName];
+      if (value && value !== '') {
+        properties[customName] = String(value);
       }
     }
 

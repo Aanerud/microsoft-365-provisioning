@@ -544,6 +544,44 @@ async batchIngestItems(items: any[]): Promise<{...}> {
 3. Grant admin consent in Azure Portal
 4. People data connectors are in preview - tenant may need opt-in
 
+### Skills Empty Despite Successful Ingestion (profileSyncEnabled=False)
+
+**Symptom**: Items ingested with `CAPIv2 export completed with status 'Created'`, but all exports show `profileSyncEnabled=False, profileSynced=False`. User profiles show `skills: []`.
+
+**Root Cause**: The connection is NOT in the `prioritizedSourceUrls` list. This can happen if:
+
+1. **Stale source cleanup removed the AAD default source**: The `prioritizedSourceUrls` array contains Microsoft's internal AAD source (UUID format like `4ce763dd-...`). If cleanup code tries to validate this by calling `GET /external/connections/{uuid}`, it gets 404 and removes it. Microsoft then silently reverts the entire PATCH, so our connector URL never gets added either.
+
+2. **Profile source not propagated before ingestion**: Items ingested before TSS (Tenant Settings Service) propagates the profile source get `"Profile source registration failed for item"` in internal logs. Even though CAPIv2 export still happens, `profileSyncEnabled` stays `False`.
+
+**Diagnosis**:
+```bash
+node tools/debug/check-profile-source.mjs <connection-id>
+# Look for: "❌ Our connection is NOT in prioritized sources"
+```
+
+**Internal debug log indicators** (Admin Portal CSV export):
+- `ProfileSourceRegistrar: Failed to retrieve settings from TSS, statusCode=Unauthorized` — profile source not yet propagated
+- `CAPIv2 export completed ... profileSyncEnabled=False` — data will NOT sync to profiles
+- `CAPIv2 export completed ... profileSyncEnabled=True` — data WILL sync to profiles (this is what you want)
+
+**Solution**:
+1. Fix prioritization: `node tools/admin/register-profile-source.mjs <connection-id>`
+2. Re-ingest items: `npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id <id>`
+3. Wait 6+ hours for indexing
+
+**Prevention** (implemented in code):
+- Stale source cleanup now only validates alphanumeric connector IDs, preserving UUID-format internal sources
+- 60-second propagation wait after profile source registration before ingestion starts
+
+### Prioritized Sources — Stale Cleanup Destroying AAD Default
+
+**Symptom**: After running `option-b:setup`, the diagnostic shows the connection is NOT in prioritized sources, even though the code logged `"Added to prioritized profile sources"`.
+
+**Root Cause**: The stale source cleanup validated ALL source URLs by calling `GET /external/connections/{sourceId}`. The AAD default source (`4ce763dd-...`) is not an external connection, so it returned 404 and was removed. Microsoft then rejected or reverted the PATCH (you can't remove the AAD default source), and our connection was never added.
+
+**Fix**: The cleanup code now uses `CONNECTOR_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/` to only validate external connector IDs. UUID-format sources are always preserved.
+
 ### Profile Source Missing `kind` Property
 
 **Symptom**: Profile source appears to be registered, but data doesn't appear in profile cards or Copilot. Debug scripts may show "Profile source exists but missing kind property".
@@ -753,7 +791,7 @@ npm run option-b:setup
 
 ---
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-02-16
 **Status**: ✅ Production Ready (with Copilot searchability via people data labels)
 **Authentication**: Option A: Delegated (Profile API), Option B: Client Credentials (Connectors)
 **Main File**: `src/enrich-connector.ts` (Option B), `src/enrich-profiles.ts` (Option A enrichment)

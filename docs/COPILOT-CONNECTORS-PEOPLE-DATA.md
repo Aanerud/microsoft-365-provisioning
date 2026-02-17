@@ -691,4 +691,53 @@ When recreating connections, ensure old connections are **fully deleted** (wait 
 
 ---
 
-**Last Updated**: 2026-02-05
+## 12. Critical Learnings: Profile Source Propagation and Prioritization
+
+### Lesson 1: Separate Registration from Ingestion
+
+Microsoft's internal pipeline (TSS — Tenant Settings Service) must discover the profile source **before** it can process ingested items. When registration and ingestion happen in the same flow with no delay:
+
+**Internal debug log sequence (BROKEN)**:
+```
+ProfileSourceRegistrar: Failed to retrieve settings from TSS, statusCode=Unauthorized
+Profile source registration failed for item, but transformation will continue
+CAPIv2 export completed with status 'Created', profileSyncEnabled=False, profileSynced=False
+```
+
+**Internal debug log sequence (WORKING)**:
+```
+Profile source already exists with kind property, no action needed
+Profile source registered successfully for item
+CAPIv2 export completed with status 'Created', profileSyncEnabled=True, profileSynced=True
+```
+
+**Key flag**: `profileSyncEnabled=True` is the indicator that Microsoft's backend will actually sync connector data to user profiles. Without it, CAPIv2 export still happens (status `Created`) but data never reaches `/users/{id}/profile/skills`.
+
+**Microsoft's recommendation**: Use separate commands or separate applications for registration vs ingestion. Their official sample (`msgraph-people-connector-sample-dotnet`) uses 3 separate CLI commands: `setup`, `register`, `sync`.
+
+**Our implementation**: 60-second polling wait after registration, verifying the source is readable via `GET /admin/people/profileSources` before proceeding to ingestion.
+
+### Lesson 2: Never Remove Non-Connector Sources from Prioritized List
+
+The `prioritizedSourceUrls` array contains URLs for ALL profile sources, including Microsoft's **internal AAD default source**:
+
+```
+https://graph.microsoft.com/beta/admin/people/profileSources(sourceId='4ce763dd-9214-4eff-af7c-da491cc3782d')
+```
+
+This UUID-format source ID is **NOT** an external connection. Calling `GET /external/connections/4ce763dd-...` returns 404. If your stale-cleanup code removes it:
+
+1. You PATCH `prioritizedSourceUrls` with just your connector URL
+2. Microsoft silently rejects or reverts this (AAD source is required)
+3. Your connector never appears in the prioritized list
+4. All items get `profileSyncEnabled=False` — data never reaches profiles
+
+**Rule**: Only attempt stale-cleanup on sourceIds that match the external connector pattern (starts with a letter, alphanumeric only like `m365people14`). UUID-format sourceIds are internal Microsoft sources and must ALWAYS be preserved.
+
+### Lesson 3: The `positions` Collection Proves Connector Works
+
+Even when skills/notes don't sync, the `positions` collection on a user profile may show `ConnectorSource` as a `lastModifiedBy` source contributing `employeeType` and `employeeId`. This proves the connector CAN write to profiles — the issue is specifically with skills/notes not being synced due to missing prioritization.
+
+---
+
+**Last Updated**: 2026-02-16
