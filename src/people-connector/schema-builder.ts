@@ -4,13 +4,15 @@ import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-prope
 // Each label maps to a Microsoft profile entity that Copilot can search.
 // NOTE: Adding personNote here broke profile enrichment for personSkills too.
 // Only personSkills is proven to work. Add labels back one at a time after verifying.
-const ENABLED_LABELS = new Set(['personSkills']);
+const ENABLED_LABELS = new Set(['personSkills', 'personNote']);
 
 // Custom properties: searchable by Copilot/Search but not mapped to profile cards.
-// NOTE: Custom properties without people data labels break profile enrichment
-// for the entire connection. Keep this empty for people connectors.
-// Use a separate non-people connector for custom searchable properties.
-const CUSTOM_PROPERTIES: Array<{ name: string; type: 'string' | 'stringCollection' }> = [];
+// Custom properties: searchable by Copilot/Search but not mapped to profile cards.
+// Previously believed to break profile enrichment, but that was likely caused by
+// the profile source propagation bug (fixed 2026-02-16). Testing with m365people15.
+const CUSTOM_PROPERTIES: Array<{ name: string; type: 'string' | 'stringCollection' }> = [
+  { name: 'VTeam', type: 'string' },
+];
 
 const PROPERTY_NAME_REGEX = /^[A-Za-z0-9]+$/;
 const MAX_PROPERTY_NAME_LENGTH = 32;

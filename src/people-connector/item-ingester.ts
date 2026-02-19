@@ -12,7 +12,7 @@ const MAX_DELAY_MS = 30000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 // Must match ENABLED_LABELS in schema-builder.ts
-const ENABLED_LABELS = new Set(['personSkills']);
+const ENABLED_LABELS = new Set(['personSkills', 'personNote']);
 
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
   ['personAnniversaries', 'stringCollection'],
