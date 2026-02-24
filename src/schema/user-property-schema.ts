@@ -438,7 +438,7 @@ export const USER_PROPERTY_SCHEMA: PropertyMetadata[] = [
     profileApiEndpoint: '/profile/educationalActivities',
   },
   {
-    name: 'pastProjects',
+    name: 'projects',
     type: 'array',
     writable: true,
     category: 'personal',

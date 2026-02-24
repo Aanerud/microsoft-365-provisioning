@@ -1,15 +1,21 @@
 import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-property-schema.js';
 
 // People data labels to include in the connector schema.
-// Each label maps to a Microsoft profile entity that Copilot can search.
-// NOTE: Adding personNote here broke profile enrichment for personSkills too.
-// Only personSkills is proven to work. Add labels back one at a time after verifying.
-const ENABLED_LABELS = new Set(['personSkills', 'personNote']);
+// Every property with an official label MUST use that label (Path A deserialization).
+// Path A stores values as JsonElement — safely handles string and stringCollection.
+// Reference: docs/MicrosoftDocs/build-connectors-with-people-data.md
+const ENABLED_LABELS = new Set([
+  'personSkills',         // stringCollection → skillProficiency
+  'personNote',           // string           → personAnnotation
+  'personCertifications', // stringCollection → personCertification
+  'personProjects',       // stringCollection → projectParticipation
+  // 'personAwards',         // stringCollection → personAward          (testing: m365people20)
+  // 'personAnniversaries',  // stringCollection → personAnniversary  (next)
+  // 'personWebSite',        // string           → webSite             (next)
+]);
 
 // Custom properties: searchable by Copilot/Search but not mapped to profile cards.
-// Custom properties: searchable by Copilot/Search but not mapped to profile cards.
-// Previously believed to break profile enrichment, but that was likely caused by
-// the profile source propagation bug (fixed 2026-02-16). Testing with m365people15.
+// CRITICAL: Must be type 'string' only (Path B deserialization).
 const CUSTOM_PROPERTIES: Array<{ name: string; type: 'string' | 'stringCollection' }> = [
   { name: 'VTeam', type: 'string' },
 ];
