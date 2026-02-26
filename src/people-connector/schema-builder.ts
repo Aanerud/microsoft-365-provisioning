@@ -1,17 +1,25 @@
 import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-property-schema.js';
 
-// People data labels to include in the connector schema.
+// All 13 official people data labels from Microsoft docs.
 // Every property with an official label MUST use that label (Path A deserialization).
 // Path A stores values as JsonElement — safely handles string and stringCollection.
 // Reference: docs/MicrosoftDocs/build-connectors-with-people-data.md
 const ENABLED_LABELS = new Set([
+  // Group 1: Option B native (single CSV column → entity)
   'personSkills',         // stringCollection → skillProficiency
   'personNote',           // string           → personAnnotation
   'personCertifications', // stringCollection → personCertification
   'personProjects',       // stringCollection → projectParticipation
-  // 'personAwards',         // stringCollection → personAward          (testing: m365people20)
-  // 'personAnniversaries',  // stringCollection → personAnniversary  (next)
-  // 'personWebSite',        // string           → webSite             (next)
+  'personAwards',         // stringCollection → personAward
+  'personAnniversaries',  // stringCollection → personAnniversary
+  'personWebSite',        // string           → webSite
+  // Group 2: Composite (multiple Option A CSV columns → entity)
+  'personName',            // string           → personName
+  'personCurrentPosition', // string           → workPosition
+  'personAddresses',       // stringCollection → itemAddress
+  'personEmails',          // stringCollection → itemEmail
+  'personPhones',          // stringCollection → itemPhone
+  'personWebAccounts',     // stringCollection → webAccount (no CSV data yet)
 ]);
 
 // Custom properties: searchable by Copilot/Search but not mapped to profile cards.
@@ -72,6 +80,23 @@ export class PeopleSchemaBuilder {
         type: schemaType,
         labels: [label],
       });
+    }
+
+    // Composite labeled properties (data from multiple Option A CSV columns)
+    // Hardcoded like accountInformation since they don't come from getOptionBProperties()
+    const compositeProperties: Array<{ name: string; type: string; labels: string[] }> = [
+      { name: 'personNameInfo', type: 'string', labels: ['personName'] },
+      { name: 'currentPosition', type: 'string', labels: ['personCurrentPosition'] },
+      { name: 'addresses', type: 'stringCollection', labels: ['personAddresses'] },
+      { name: 'emails', type: 'stringCollection', labels: ['personEmails'] },
+      { name: 'phones', type: 'stringCollection', labels: ['personPhones'] },
+      { name: 'webAccounts', type: 'stringCollection', labels: ['personWebAccounts'] },
+    ];
+    for (const comp of compositeProperties) {
+      if (ENABLED_LABELS.has(comp.labels[0])) {
+        assertValidPropertyName(comp.name);
+        properties.push(comp);
+      }
     }
 
     // Custom properties (searchable, no people data label)

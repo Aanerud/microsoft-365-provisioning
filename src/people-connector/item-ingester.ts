@@ -17,7 +17,15 @@ const ENABLED_LABELS = new Set([
   'personNote',
   'personCertifications',
   'personProjects',
-  // 'personAwards',
+  'personAwards',
+  'personAnniversaries',
+  'personWebSite',
+  'personName',
+  'personCurrentPosition',
+  'personAddresses',
+  'personEmails',
+  'personPhones',
+  'personWebAccounts',
 ]);
 
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
@@ -113,12 +121,15 @@ export class PeopleItemIngester {
           properties[prop.name] = arrayValue.map(serializeDisplayNameItem);
         }
       } else if (label === 'personNote') {
-        // personAnnotation entity requires: {"detail":{"contentType":"text","content":"..."}}
+        // personAnnotation entity: {"detail":{"contentType":"text","content":"..."}}
         properties[prop.name] = JSON.stringify({
           detail: { contentType: 'text', content: value }
         });
+      } else if (label === 'personWebSite') {
+        // webSite entity: {"webUrl":"..."}
+        properties[prop.name] = JSON.stringify({ webUrl: value });
       } else {
-        // Other single-value labels (e.g., personWebSite) use: {"displayName":"..."}
+        // Other single-value labels: {"displayName":"..."}
         properties[prop.name] = JSON.stringify({ displayName: value });
       }
     }
@@ -130,6 +141,66 @@ export class PeopleItemIngester {
         properties[customName] = String(value);
       }
     }
+
+    // Composite labeled properties (data from multiple Option A CSV columns)
+
+    // personName → {"displayName":"...","first":"...","last":"..."}
+    if (csvRow.givenName || csvRow.surname || csvRow.displayName) {
+      properties.personNameInfo = JSON.stringify({
+        displayName: csvRow.displayName || `${csvRow.givenName || ''} ${csvRow.surname || ''}`.trim(),
+        first: csvRow.givenName || '',
+        last: csvRow.surname || '',
+      });
+    }
+
+    // personCurrentPosition → {"detail":{"jobTitle":"...","company":{"displayName":"..."}},"isCurrent":true}
+    if (csvRow.jobTitle || csvRow.companyName || csvRow.department) {
+      properties.currentPosition = JSON.stringify({
+        detail: {
+          jobTitle: csvRow.jobTitle || '',
+          company: { displayName: csvRow.companyName || '' },
+        },
+        isCurrent: true,
+      });
+    }
+
+    // personAddresses → [{"type":"business","street":"...","city":"...","state":"...","countryOrRegion":"...","postalCode":"..."}]
+    if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
+      properties['addresses@odata.type'] = 'Collection(String)';
+      properties.addresses = [JSON.stringify({
+        type: 'business',
+        street: csvRow.streetAddress || '',
+        city: csvRow.city || '',
+        state: csvRow.state || '',
+        countryOrRegion: csvRow.country || '',
+        postalCode: csvRow.postalCode || '',
+      })];
+    }
+
+    // personEmails → [{"address":"...","type":"main"}]
+    const emailAddr = csvRow.mail || csvRow.email;
+    if (emailAddr) {
+      properties['emails@odata.type'] = 'Collection(String)';
+      properties.emails = [JSON.stringify({ address: emailAddr, type: 'main' })];
+    }
+
+    // personPhones → [{"number":"...","type":"mobile"},{"number":"...","type":"business"}]
+    const phoneEntries: string[] = [];
+    if (csvRow.mobilePhone) {
+      phoneEntries.push(JSON.stringify({ number: csvRow.mobilePhone, type: 'mobile' }));
+    }
+    if (csvRow.businessPhones) {
+      const phones = normalizeToArray(csvRow.businessPhones);
+      for (const p of phones) {
+        phoneEntries.push(JSON.stringify({ number: String(p), type: 'business' }));
+      }
+    }
+    if (phoneEntries.length > 0) {
+      properties['phones@odata.type'] = 'Collection(String)';
+      properties.phones = phoneEntries;
+    }
+
+    // personWebAccounts — no CSV data yet, skipped when empty
 
     return {
       id: itemId,
