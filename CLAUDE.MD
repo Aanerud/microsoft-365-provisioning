@@ -28,9 +28,10 @@ CSV Data
     │   - Profile API: languages, interests (src/enrich-profiles.ts)
     │   - Auth: Delegated (browser login)
     │
-    └─► Option B: Graph Connector Pipeline
-        - skills (personSkills), aboutMe (personNote)
-        - certifications, awards, projects, etc.
+    └─► Option B: Graph Connector Pipeline (all 13 people data labels)
+        - Native: skills, aboutMe, certs, projects, awards, birthday, mySite
+        - Composite: name, position, addresses, emails, phones
+        - Custom: VTeam (string only)
         - Auth: Application (client secret)
         - File: src/enrich-connector.ts
         - API: PUT /external/connections/{id}/items/{id}
@@ -42,68 +43,88 @@ CSV Data
 |-----------|--------|-----|
 | **Standard User Fields** | Option A (`provision.ts`) | Native identity management |
 | **Profile Fields** (languages, interests) | Option A (`enrich-profiles.ts`) | No people data labels exist for Copilot |
-| **Profile Fields** (skills, aboutMe) | Option B (`enrich-connector.ts`) | Have people data labels (personSkills, personNote) for Copilot search |
-| **Custom Org Fields** (VTeam, CostCenter) | Option B (`enrich-connector.ts`) | Only way to add custom searchable properties |
+| **Option B Native** (skills, aboutMe, certs, projects, awards, birthday, mySite) | Option B (`enrich-connector.ts`) | Have people data labels for Copilot search |
+| **Composite Labels** (name, position, addresses, emails, phones) | Option B (`enrich-connector.ts`) | Composed from Option A CSV columns, sent via connector for Copilot discoverability |
+| **Custom Org Fields** (VTeam) | Option B (`enrich-connector.ts`) | Custom searchable properties (string only, Path B) |
 
 ### Graph Connectors for Copilot Searchability
 
-Graph Connectors with **people data labels** enable Copilot to search for people based on their skills, notes, and custom properties. Key requirements:
+Graph Connectors with **people data labels** enable Copilot to search for people based on their skills, notes, and custom properties. All 13 official labels are enabled and validated (m365people23). Key requirements:
 - Connection must have `contentCategory: 'people'`
 - Schema must use `personAccount` label (required for user mapping)
-- Schema can use `personSkills`, `personNote`, `personCertifications`, etc.
+- All 13 people data labels enabled (see full list below)
 - Items must have ACL set to `everyone`/`grant`
-- Wait 6+ hours after ingestion for Microsoft 365 to index
+- Wait 6–24 hours after ingestion for Microsoft 365 to index
 
-See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` for complete details.
+See `docs/COPILOT-CONNECTORS-PEOPLE-DATA.md` for end-to-end flow.
+See `docs/graph-connector-lessons.md` for **critical lessons learned** from m365people14–23.
 
-#### Critical Requirements
+#### Path A vs Path B Deserialization (CRITICAL)
+
+Confirmed by Microsoft engineer — the connector backend has two deserialization paths:
+
+- **Path A (with label)**: Stores values as `JsonElement` — safely handles any JSON type
+- **Path B (without label)**: Blob deserialization — expects `string` values ONLY
+
+**Rule**: Custom properties (no label) MUST be type `string`. Sending a `stringCollection` without a label crashes the entire connection with:
+```
+Cannot get the value of a token type 'StartArray' as a string. Path: $.skills
+```
+
+#### All 13 People Data Labels (validated m365people23)
+
+**Group 1 — Option B native** (single CSV column → entity):
+
+| Label | Type | CSV Column | Serialization |
+|-------|------|-----------|---------------|
+| `personSkills` | stringCollection | skills | `{"displayName":"..."}` |
+| `personNote` | string | aboutMe | `{"detail":{"contentType":"text","content":"..."}}` |
+| `personCertifications` | stringCollection | certifications | `{"displayName":"..."}` |
+| `personProjects` | stringCollection | projects | `{"displayName":"..."}` |
+| `personAwards` | stringCollection | awards | `{"displayName":"..."}` |
+| `personAnniversaries` | stringCollection | birthday | `{"type":"birthday","date":"..."}` |
+| `personWebSite` | string | mySite | `{"webUrl":"..."}` |
+
+**Group 2 — Composite** (multiple Option A CSV columns → entity):
+
+| Label | Type | CSV Columns | Serialization |
+|-------|------|------------|---------------|
+| `personName` | string | givenName, surname, displayName | `{"displayName":"...","first":"...","last":"..."}` |
+| `personCurrentPosition` | string | jobTitle, companyName | `{"detail":{"jobTitle":"...","company":{"displayName":"..."}},"isCurrent":true}` |
+| `personAddresses` | stringCollection | streetAddress, city, state, country, postalCode | `{"type":"business","street":"...","city":"..."}` |
+| `personEmails` | stringCollection | mail | `{"address":"...","type":"main"}` |
+| `personPhones` | stringCollection | mobilePhone, businessPhones | `{"number":"...","type":"mobile"/"business"}` |
+| `personWebAccounts` | stringCollection | *(none)* | No CSV data — declared but empty |
+
+#### Code Change Discipline
+
+**NEVER refactor working connector code.** m365people18–20 failed because of "harmless" refactoring (changing type definitions, removing unused methods) that produced identical item payloads. Only make additive changes to the working baseline. See `docs/graph-connector-lessons.md` for full history.
+
+#### Other Critical Requirements
 
 1. **Profile Source Registration - `kind` Property**
 
-   When registering a connector as a profile source, the `kind: 'Connector'` property is **REQUIRED**:
-   ```typescript
-   // CORRECT - kind is required
-   const profileSourcePayload = {
-     sourceId: connectionId,
-     displayName: 'Display Name',
-     kind: 'Connector',  // <-- REQUIRED per Microsoft docs
-     webUrl: 'https://...',
-   };
-   ```
-   Without this property, profile data may not appear in profile cards or Copilot.
+   The `kind: 'Connector'` property is **REQUIRED** when registering a profile source.
 
 2. **Beta API for Connection Creation**
 
-   The `contentCategory: 'people'` parameter is only supported by the beta API. Using v1.0 will result in `contentCategory: 'uncategorized'`.
+   The `contentCategory: 'people'` parameter is only supported by the beta API.
 
 3. **Profile Source Propagation — Separate Registration from Ingestion**
 
-   Microsoft's internal pipeline (TSS — Tenant Settings Service) must discover the profile source before it can process ingested items. If items are ingested before propagation completes, the internal logs will show:
-   - `ProfileSourceRegistrar: Failed to retrieve settings from TSS, statusCode=Unauthorized`
-   - `Profile source registration failed for item, but transformation will continue`
-   - CAPIv2 exports with `profileSyncEnabled=False` (data never reaches user profiles)
-
-   **Our fix**: `connection-manager.ts` waits 60 seconds after registration and polls `GET /admin/people/profileSources` to confirm the source is accessible before returning. This matches Microsoft's recommendation to use separate commands for setup vs ingestion.
+   `connection-manager.ts` waits 60 seconds after registration and polls `GET /admin/people/profileSources` to confirm propagation before ingestion begins.
 
 4. **Prioritized Source Cleanup — NEVER Remove Non-Connector Sources**
 
-   The `prioritizedSourceUrls` array contains URLs for ALL profile sources, including Microsoft's internal AAD default source (UUID format like `4ce763dd-9214-4eff-af7c-da491cc3782d`). When cleaning up stale entries:
+   UUID-format sourceIds (e.g. `4ce763dd-...`) are internal Microsoft sources — never remove them from `prioritizedSourceUrls`.
 
-   **CRITICAL**: Only validate sources that look like external connector IDs (alphanumeric, e.g. `m365people14`). UUID-format sourceIds are internal Microsoft sources — calling `GET /external/connections/{uuid}` returns 404, but deleting them from the prioritized list will break profile sync entirely. Microsoft may silently revert a PATCH that removes the AAD default source, meaning our connector URL also gets lost.
+5. **Delete Old Connections Before Deploying New Ones**
 
-   ```typescript
-   // WRONG — treats AAD source "4ce763dd-..." as stale and removes it
-   await this.betaClient.api(`/external/connections/${sourceId}`).get(); // 404!
+   Multiple active connections with overlapping labels cause priority conflicts. Always delete the previous connection first.
 
-   // CORRECT — only validate alphanumeric connector IDs
-   const CONNECTOR_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
-   if (CONNECTOR_ID_PATTERN.test(sourceId)) { /* validate */ }
-   else { /* always keep — internal Microsoft source */ }
-   ```
+6. **`profileSyncEnabled` Flag**
 
-5. **`profileSyncEnabled` Flag — The Key Indicator**
-
-   In Microsoft's internal debug logs (Admin Portal CSV export), the CAPIv2 export entries show `profileSyncEnabled=True/False`. This flag indicates whether Microsoft's backend will sync connector data to user profiles. If it stays `False` after 6+ hours, the connection is missing from prioritized sources or the profile source wasn't propagated before ingestion.
+   `profileSyncEnabled=False` on initial CAPIv2 export is NORMAL. Data appears on profiles after subsequent cycles (6–24h). True failure is when it stays False across multiple cycles with TSS Unauthorized errors.
 
 ### Profile API Collections (20 Total)
 
@@ -315,5 +336,5 @@ The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 ta
 
 ---
 
-**Last Updated**: 2026-02-16
-**Version**: 4.0.0 (Option A/B split: standalone Profile API enrichment + Graph Connector pipeline)
+**Last Updated**: 2026-02-27
+**Version**: 5.0.0 (All 13 people data labels enabled, validated with m365people23)

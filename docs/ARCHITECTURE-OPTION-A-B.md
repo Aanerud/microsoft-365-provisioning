@@ -1,6 +1,6 @@
 # Architecture: Option A vs Option B
 
-**Last Updated**: 2026-01-25
+**Last Updated**: 2026-02-27
 
 ## Overview
 
@@ -97,24 +97,33 @@ Enrich user profiles with additional data that surfaces in Microsoft 365 Copilot
 
 ### Properties Handled
 
-**Official People Data** (with Microsoft labels):
-- skills → personSkills
-- pastProjects → personProjects
-- certifications → personCertifications
-- awards → personAwards
-- aboutMe → personNote
-- mySite → personWebSite
-- birthday → personAnniversaries
+All **13 people data labels** are now enabled across the schema:
 
-**Custom People Data** (searchable):
+**Option B Native (7 labels)** — single CSV column each:
+- skills → personSkills
+- aboutMe → personNote
+- certifications → personCertifications
+- projects → personProjects
+- awards → personAwards
+- birthday → personAnniversaries
+- mySite → personWebSite
+
+**Composite Labels (6 labels)** — composed from multiple Option A CSV columns:
+- personName — composed from givenName + surname
+- personCurrentPosition — composed from jobTitle + department + companyName
+- personAddresses — composed from city + state + country + officeLocation
+- personEmails — composed from mail
+- personPhones — composed from mobilePhone + businessPhones
+- personWebAccounts — composed from relevant web account CSV columns
+
+**Custom Properties**:
+- VTeam (string only, Path B deserialization)
+
+**Custom People Data** (searchable, no official labels):
 - interests
 - responsibilities
 - schools
 - languages (with proficiency levels)
-
-**Custom Organization Properties**:
-- VTeam, BenefitPlan, CostCenter, BuildingAccess, ProjectCode, WritingStyle, Specialization
-- Any additional CSV columns not in schema
 
 ### Architecture
 
@@ -263,7 +272,7 @@ Sarah Chen,sarah@domain.com,CEO,Executive,"['Leadership']","['Innovation']",Expe
 | **Job Information** | jobTitle, department, employeeType, companyName, officeLocation | Option A | Entra ID user object | Organizational structure |
 | **Location & Regional** | usageLocation, preferredLanguage, city, state, country | Option A | Entra ID user object | Required for licensing |
 | **Contact** | mobilePhone, businessPhones | Option A | Entra ID user object | Communication |
-| **Official People Data** | skills, pastProjects, certifications, awards, aboutMe, mySite, birthday | Option B | Graph Connector | Has People Data labels |
+| **Official People Data** | skills, projects, certifications, awards, aboutMe, mySite, birthday | Option B | Graph Connector | Has People Data labels |
 | **Custom People Data** | interests, responsibilities, schools, languages | Option B | Graph Connector | No official labels, searchable |
 | **Custom Organization** | VTeam, BenefitPlan, CostCenter, etc. | Option B | Graph Connector | Organization-specific fields |
 
@@ -393,5 +402,7 @@ npm run enrich-profiles    # Creates enrichment data
 ---
 
 **Status**: ✅ Both options implemented and working
-**Last Tested**: 2026-01-25
+**Validated Baseline**: m365people23
 **Test Results**: 95/95 users successfully provisioned and enriched (textcraft-europe.csv)
+
+See `docs/graph-connector-lessons.md` for critical Path A vs Path B deserialization rules.

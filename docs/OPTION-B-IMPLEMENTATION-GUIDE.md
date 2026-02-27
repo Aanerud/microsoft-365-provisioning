@@ -1,6 +1,7 @@
 # Option B: Profile Enrichment via Microsoft Graph Connectors
 
-**Status**: ✅ Implemented and Working (2026-01-26)
+**Status**: ✅ All 13 People Data Labels Validated (m365people23, 2026-02-27)
+**Version**: 5.0.0
 
 ## Overview
 
@@ -79,7 +80,7 @@ Handled by `enrich-profiles.ts` (Profile API) and `enrich-connector.ts` (Graph C
 |----------|-------|-------------------|
 | `skills` | `personSkills` | **Yes** |
 | `aboutMe` | `personNote` | **Yes** |
-| `pastProjects` | `personProjects` | Yes |
+| `projects` | `personProjects` | Yes |
 | `certifications` | `personCertifications` | Yes |
 | `awards` | `personAwards` | Yes |
 | `mySite` | `personWebSite` | Yes |
@@ -265,8 +266,8 @@ Each person is converted to an external item with this structure:
       "{\"displayName\":\"TypeScript\"}",
       "{\"displayName\":\"Azure\"}"
     ],
-    "pastProjects@odata.type": "Collection(String)",
-    "pastProjects": [
+    "projects@odata.type": "Collection(String)",
+    "projects": [
       "{\"displayName\":\"Migration\"}"
     ],
     "aboutMe": "{\"detail\":{\"contentType\":\"text\",\"content\":\"Experienced engineer...\"}}"
@@ -310,23 +311,34 @@ Extra CSV columns without people data labels are ignored by the connector in str
 
 **Dynamic Schema**: Only people-labeled properties are included; extra columns are ignored.
 
-### Available People Data Labels (Microsoft)
+### Available People Data Labels
 
-From [Microsoft documentation](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/build-connectors-with-people-data):
+All 13 official people data labels are now enabled and validated (m365people23).
 
-| Label | Type | Profile Entity |
-|-------|------|----------------|
-| `personAccount` | string | userAccountInformation (required) |
-| `personSkills` | stringCollection | skillProficiency |
-| `personNote` | string | personAnnotation |
-| `personCertifications` | stringCollection | personCertification |
-| `personAwards` | stringCollection | personAward |
-| `personProjects` | stringCollection | projectParticipation |
-| `personAddresses` | stringCollection | itemAddress |
-| `personEmails` | stringCollection | itemEmail |
-| `personPhones` | stringCollection | itemPhone |
+**Group 1 — Option B Native** (single CSV column → entity):
 
-**NOT available**: `personLanguages`, `personInterests` (platform limitation - these cannot be made Copilot-searchable via connectors)
+| Label | Schema Type | CSV Column | Entity | Serialization |
+|-------|-------------|-----------|--------|---------------|
+| `personSkills` | stringCollection | skills | skillProficiency | `{"displayName":"..."}` |
+| `personNote` | string | aboutMe | personAnnotation | `{"detail":{"contentType":"text","content":"..."}}` |
+| `personCertifications` | stringCollection | certifications | personCertification | `{"displayName":"..."}` |
+| `personProjects` | stringCollection | projects | projectParticipation | `{"displayName":"..."}` |
+| `personAwards` | stringCollection | awards | personAward | `{"displayName":"..."}` |
+| `personAnniversaries` | stringCollection | birthday | personAnniversary | `{"type":"birthday","date":"..."}` |
+| `personWebSite` | string | mySite | webSite | `{"webUrl":"..."}` |
+
+**Group 2 — Composite** (multiple Option A CSV columns → entity):
+
+| Label | Schema Type | CSV Columns | Entity | Serialization |
+|-------|-------------|------------|--------|---------------|
+| `personName` | string | givenName, surname, displayName | personName | `{"displayName":"...","first":"...","last":"..."}` |
+| `personCurrentPosition` | string | jobTitle, companyName | workPosition | `{"detail":{"jobTitle":"...","company":{"displayName":"..."}},"isCurrent":true}` |
+| `personAddresses` | stringCollection | streetAddress, city, state, country, postalCode | itemAddress | `{"type":"business","street":"...","city":"..."}` |
+| `personEmails` | stringCollection | mail | itemEmail | `{"address":"...","type":"main"}` |
+| `personPhones` | stringCollection | mobilePhone, businessPhones | itemPhone | `{"number":"...","type":"mobile"/"business"}` |
+| `personWebAccounts` | stringCollection | *(none)* | webAccount | No CSV data yet |
+
+> **Path A vs Path B**: All labeled properties use Path A (JsonElement deserialization) which safely handles any JSON type. Custom properties (no label) use Path B (Blob deserialization) and MUST be type `string` only — never `stringCollection`. See `docs/graph-connector-lessons.md` for details.
 
 ## Authentication Flow
 
@@ -806,3 +818,6 @@ npm run option-b:setup
 | Custom props (VTeam, etc.) | Connector (no label) | **Yes** |
 | Languages | Profile API only | **No** (no label available) |
 | Interests | Profile API only | **No** (no label available) |
+
+---
+See also: `docs/graph-connector-lessons.md` for critical lessons learned from m365people14–23.

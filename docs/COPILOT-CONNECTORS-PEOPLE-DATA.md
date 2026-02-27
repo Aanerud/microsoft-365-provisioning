@@ -465,34 +465,37 @@ Track user interactions with the item:
 
 ---
 
-## 7. Available People Data Labels (Complete Reference)
+## 7. Available People Data Labels
 
-All 14 people data labels from Microsoft documentation:
+All 13 official people data labels are enabled and validated (m365people23, 2026-02-27).
 
-| # | Label | Type | Profile Entity | JSON Format | Our Usage |
-|---|-------|------|----------------|-------------|-----------|
-| 1 | `personAccount` | string | userAccountInformation | `{"userPrincipalName":"user@domain.com"}` | ✅ Required |
-| 2 | `personSkills` | stringCollection | skillProficiency | `{"displayName":"TypeScript"}` | ✅ Implemented |
-| 3 | `personNote` | string | personAnnotation | `{"detail":{"contentType":"text","content":"..."}}` | ✅ Implemented |
-| 4 | `personCertifications` | stringCollection | personCertification | `{"displayName":"AWS Cert","issuedDate":"2024-01-15"}` | Could add |
-| 5 | `personAnniversaries` | stringCollection | personAnniversary | `{"type":"birthday","date":"1990-05-15"}` | Not used |
-| 6 | `personInterests` | stringCollection | personInterest | `{"displayName":"Machine Learning"}` | Not used |
-| 7 | `personWebSite` | string | webSite | `{"displayName":"https://example.com"}` | Not used |
-| 8 | `personName` | string | personName | `{"displayName":"John Smith"}` | Not used |
-| 9 | `personAddress` | stringCollection | itemAddress | `{"type":"work","street":"123 Main St"}` | Not used |
-| 10 | `personEmailAddress` | stringCollection | itemEmail | `{"address":"john@example.com","type":"work"}` | Not used |
-| 11 | `personPhone` | stringCollection | itemPhone | `{"number":"+1-555-0100","type":"mobile"}` | Not used |
-| 12 | `personResponsibilities` | stringCollection | personResponsibility | `{"displayName":"Team Lead"}` | Not used |
-| 13 | `personWebAccount` | stringCollection | webAccount | `{"displayName":"LinkedIn","webUrl":"https://..."}` | Not used |
-| 14 | `personProjectParticipation` | stringCollection | projectParticipation | `{"displayName":"Project Atlas"}` | Could add |
+| Label | Type | Status | Entity | CSV Source |
+|-------|------|--------|--------|-----------|
+| `personAccount` | string | ✅ Required | userAccountInformation | email (auto) |
+| `personSkills` | stringCollection | ✅ Implemented | skillProficiency | skills |
+| `personNote` | string | ✅ Implemented | personAnnotation | aboutMe |
+| `personCertifications` | stringCollection | ✅ Implemented | personCertification | certifications |
+| `personProjects` | stringCollection | ✅ Implemented | projectParticipation | projects |
+| `personAwards` | stringCollection | ✅ Implemented | personAward | awards |
+| `personAnniversaries` | stringCollection | ✅ Implemented | personAnniversary | birthday |
+| `personWebSite` | string | ✅ Implemented | webSite | mySite |
+| `personName` | string | ✅ Implemented (composite) | personName | givenName + surname |
+| `personCurrentPosition` | string | ✅ Implemented (composite) | workPosition | jobTitle + companyName |
+| `personAddresses` | stringCollection | ✅ Implemented (composite) | itemAddress | streetAddress + city + state + country + postalCode |
+| `personEmails` | stringCollection | ✅ Implemented (composite) | itemEmail | mail |
+| `personPhones` | stringCollection | ✅ Implemented (composite) | itemPhone | mobilePhone + businessPhones |
+| `personWebAccounts` | stringCollection | ✅ Declared (no CSV data) | webAccount | *(none)* |
 
-### NOT Supported via Connectors (Platform Limitation)
-- `personLanguages` - No label exists (use Profile API instead)
-- `personManager` - Not yet supported
-- `personAssistants` - Not yet supported
-- `personColleagues` - Not yet supported
+**NOT available as labels**: `personLanguages`, `personInterests` — these have no people data labels and must use the Profile API (Option A).
 
-> **Note**: The `personInterests` label exists but has limited support. For interests, the Profile API may be more reliable.
+### Path A vs Path B Deserialization
+
+Confirmed by Microsoft engineering:
+- **Path A (with label)**: `JsonElement` deserialization — handles any JSON type safely. All 13 labels above use this path.
+- **Path B (without label)**: `Blob` deserialization — expects `string` only. Custom properties (VTeam, etc.) use this path.
+- **CRITICAL**: Never use `stringCollection` without a label. It will crash the entire connection.
+
+See `docs/graph-connector-lessons.md` for full history and lessons from m365people14–23.
 
 ---
 
