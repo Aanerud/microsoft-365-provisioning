@@ -52,12 +52,25 @@ The path from m365people21 (4 labels, working) to m365people22 (13 labels, worki
 - Added composite property declarations to schema
 - Did NOT change existing code structure, types, or method signatures
 
-### 3. Custom Properties (Path B) Are Fragile
+### 3. Custom Properties (Path B) — Dynamic from CSV
 
-- VTeam as `string` works reliably (validated across 5+ connections)
-- `responsibilities` as `stringCollection` without label crashed the entire connection
-- Even `BenefitPlan` as `string` may have contributed to failures (m365people19)
-- Safe rule: keep custom properties to a minimum, always `string` type
+Custom properties are now **auto-detected from CSV columns**. Any column not in the standard schema (`user-property-schema.ts`) and not an internal column (`name`, `email`, `role`, `ManagerEmail`) becomes a custom connector property.
+
+**How it works**:
+- `getCustomProperties(csvColumns)` in `user-property-schema.ts` detects non-standard columns
+- `schema-builder.ts` accepts optional `csvColumns` parameter; falls back to hardcoded list when not provided
+- All custom properties are registered as `string` type only (Path B safe)
+
+**Rules**:
+- Custom properties MUST be `string` type — never `stringCollection` (Path B crashes on arrays)
+- `responsibilities` has no label and is array type — handled by Profile API only, NOT the connector
+- VTeam + 6 more custom properties validated with m365people24
+
+**Schema limitation**: Connector schemas cannot be updated once registered. If you add new custom columns to your CSV, you must delete the old connector and create a new one:
+```bash
+npm run enrich:delete-connector -- --connection-id m365people23
+npm run option-b:setup -- --csv config/updated.csv --connection-id m365people24
+```
 
 ### 4. Delete Old Connections Before Deploying New Ones
 

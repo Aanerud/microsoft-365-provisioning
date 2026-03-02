@@ -45,12 +45,12 @@ Ingrid Johansen,ingrid.johansen@domain.onmicrosoft.com,CEO,Executive,Ingrid,Joha
 Lars Hansen,lars.hansen@domain.onmicrosoft.com,CTO,Engineering,Lars,Hansen,Chief Technology Officer,Employee,Nordic Solutions AS,Oslo HQ,Drammensveien 134,Oslo,Oslo,Norway,0277,NO,nb-NO,+47 918 45 678,"['+47 22 12 34 57']",EMP002,2016-06-01,ingrid.johansen@domain.onmicrosoft.com,Executive Leadership,Executive Plus,ENG-DEPT,Level-5,ENG-000
 ```
 
-**Note**: Option B now ingests only official people data labeled columns. Extra custom columns (like `VTeam`, `BenefitPlan`, `CostCenter`) are ignored by the connector to stay strict with Microsoft docs.
+**Note**: Option B ingests all 13 official people data labels plus any custom CSV columns (like `VTeam`, `BenefitPlan`, `CostCenter`) as searchable connector properties.
 
 Run both provisioning + enrichment:
 ```bash
 npm run provision -- --csv config/full-team.csv
-npm run enrich-profiles -- --csv config/full-team.csv
+npm run option-b:setup -- --csv config/full-team.csv --connection-id m365people24
 ```
 
 ---
@@ -62,8 +62,8 @@ npm run enrich-profiles -- --csv config/full-team.csv
 | **User Creation** | Creates Entra ID accounts from CSV |
 | **Multi-License Assignment** | Assigns multiple M365 licenses (E5 + Copilot, etc.) |
 | **Manager Hierarchy** | Sets up reporting structure via `ManagerEmail` column |
-| **Profile Enrichment** | Adds people-data labeled enrichment (skills, aboutMe, certifications, awards, projects) |
-| **Custom Properties** | Extra CSV columns are ignored by the connector (strict-by-doc) |
+| **Profile Enrichment** | All 13 people data labels: skills, aboutMe, certifications, awards, projects, name, position, addresses, emails, phones, and more |
+| **Custom Properties** | Extra CSV columns auto-detected and added as searchable connector properties |
 | **State Management** | Detects CREATE/UPDATE/NOOP - won't duplicate users |
 | **Tenant Reset** | Safely delete all users except protected admin accounts |
 
@@ -225,7 +225,7 @@ These use Microsoft people data labels and are Copilot-searchable:
 |--------|---------|------------------|
 | `skills` | "['TypeScript','Azure']" | `personSkills` |
 | `aboutMe` | "10 years experience..." | `personNote` |
-| `pastProjects` | "['Migration']" | `personProjects` |
+| `projects` | "['Migration']" | `personProjects` |
 | `certifications` | "['PMP']" | `personCertifications` |
 | `awards` | "['MVP']" | `personAwards` |
 | `mySite` | "https://intranet/" | `personWebSite` |
@@ -233,16 +233,30 @@ These use Microsoft people data labels and are Copilot-searchable:
 
 Languages/interests have no connector labels and are not ingested via the connector.
 
-### Custom Columns (Ignored by Connector)
+### Custom Properties (Auto-Detected from CSV)
 
-Extra columns are ignored by the connector in strict-by-doc mode. Use the supported people data labeled columns above if you need Copilot searchability:
+Any CSV column that isn't a standard Microsoft Graph property or an internal column (`name`, `email`, `role`, `ManagerEmail`) is automatically treated as a **custom connector property**:
 
 ```csv
 name,email,role,department,VTeam,CostCenter,BuildingAccess,WritingStyle,Specialization
 Sarah Chen,sarah@domain.com,CEO,Executive,Leadership,C-SUITE,Level-5,Strategic,Leadership
 ```
 
-`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → Ignored by the connector (kept only in CSV).
+`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → Automatically added to the connector schema as searchable custom properties. They appear in profile cards as notes with `displayName: "CustomPropertiesFromConnector"`.
+
+**How it works**: The schema builder reads your CSV columns and calls `getCustomProperties(csvColumns)` to detect any column not in the [standard schema](./src/schema/user-property-schema.ts). These are registered as `string` type properties (no people data label).
+
+**Schema limitation**: Microsoft Graph Connector schemas **cannot be updated** once registered. If you add new custom columns to your CSV, you must delete the old connector and create a new one:
+
+```bash
+# Delete old connector
+npm run enrich:delete-connector -- --connection-id m365people23
+
+# Create new connector with updated schema
+npm run option-b:setup -- --csv config/updated-team.csv --connection-id m365people24
+```
+
+The 13 official people data labels (skills, certifications, awards, etc.) are always included regardless of CSV columns. Only custom properties are dynamic.
 
 ---
 

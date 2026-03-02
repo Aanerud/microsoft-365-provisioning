@@ -45,7 +45,7 @@ CSV Data
 | **Profile Fields** (languages, interests) | Option A (`enrich-profiles.ts`) | No people data labels exist for Copilot |
 | **Option B Native** (skills, aboutMe, certs, projects, awards, birthday, mySite) | Option B (`enrich-connector.ts`) | Have people data labels for Copilot search |
 | **Composite Labels** (name, position, addresses, emails, phones) | Option B (`enrich-connector.ts`) | Composed from Option A CSV columns, sent via connector for Copilot discoverability |
-| **Custom Org Fields** (VTeam) | Option B (`enrich-connector.ts`) | Custom searchable properties (string only, Path B) |
+| **Custom Org Fields** (VTeam, BenefitPlan, CostCenter, etc.) | Option B (`enrich-connector.ts`) | Auto-detected from CSV, string only (Path B) |
 
 ### Graph Connectors for Copilot Searchability
 

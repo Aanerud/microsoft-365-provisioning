@@ -75,11 +75,13 @@ export class PeopleItemIngester {
   private betaClient: Client;
   private connectionId: string;
   private logger: Logger;
+  private csvColumns?: string[];
 
-  constructor(betaClient: Client, connectionId: string, logger: Logger) {
+  constructor(betaClient: Client, connectionId: string, logger: Logger, csvColumns?: string[]) {
     this.betaClient = betaClient;
     this.connectionId = connectionId;
     this.logger = logger;
+    this.csvColumns = csvColumns;
   }
 
   /**
@@ -135,7 +137,7 @@ export class PeopleItemIngester {
     }
 
     // Add custom properties (plain string values, no serialization needed)
-    for (const customName of PeopleSchemaBuilder.getCustomPropertyNames()) {
+    for (const customName of PeopleSchemaBuilder.getCustomPropertyNames(this.csvColumns)) {
       const value = csvRow[customName];
       if (value && value !== '') {
         properties[customName] = String(value);

@@ -99,7 +99,7 @@ async function loadConnectorRows(csvPath: string): Promise<{
 
   const csvColumns = records.length > 0 ? Object.keys(records[0]) : [];
   const labeledOptionBFields = new Set(getLabeledOptionBFieldNames());
-  const customPropertyNames = new Set(PeopleSchemaBuilder.getCustomPropertyNames());
+  const customPropertyNames = new Set(PeopleSchemaBuilder.getCustomPropertyNames(csvColumns));
   const ignoredFields = csvColumns.filter(col =>
     !STANDARD_USER_FIELDS.has(col) &&
     !PROFILE_API_FIELDS.has(col) &&
@@ -124,7 +124,7 @@ async function enrichViaConnector(
   console.log('Writing people-labeled + custom searchable properties.');
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
-  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames();
+  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames(csvColumns);
   const customFields = customPropertyNames.filter(field => csvColumns.includes(field));
   if (connectorFields.length > 0) {
     console.log(`  - Labeled fields: ${connectorFields.join(', ')}`);
@@ -153,7 +153,7 @@ async function enrichViaConnector(
     );
 
     // Register schema with people data labels + custom properties
-    const schema = PeopleSchemaBuilder.buildPeopleSchema();
+    const schema = PeopleSchemaBuilder.buildPeopleSchema(csvColumns);
     const labeledCount = schema.filter((p: any) => p.labels).length;
     const customCount = schema.length - labeledCount;
     console.log(`Schema: ${labeledCount} labeled properties + ${customCount} custom searchable properties.`);
@@ -168,7 +168,7 @@ async function enrichViaConnector(
     await connectionManager.registerAsProfileSource('M365 Agent Provisioning', webUrl);
   }
 
-  const itemIngester = new PeopleItemIngester(betaClient, options.connectionId, logger);
+  const itemIngester = new PeopleItemIngester(betaClient, options.connectionId, logger, csvColumns);
 
   // Create external items for profiles with labeled or custom property data
   const allConnectorFields = [...labeledOptionBFields, ...customPropertyNames];
@@ -253,7 +253,7 @@ async function run(): Promise<void> {
   console.log(`Loaded ${connectorRows.length} profiles`);
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
-  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames();
+  const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames(csvColumns);
   const customFields = customPropertyNames.filter(field => csvColumns.includes(field));
   console.log('Field routing:');
   console.log(`  Labeled: ${connectorFields.join(', ') || '(none detected)'}`);

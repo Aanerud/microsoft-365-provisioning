@@ -1,4 +1,4 @@
-import { getOptionBProperties, getPeopleDataMapping } from '../schema/user-property-schema.js';
+import { getOptionBProperties, getPeopleDataMapping, getCustomProperties } from '../schema/user-property-schema.js';
 
 // All 13 official people data labels from Microsoft docs.
 // Every property with an official label MUST use that label (Path A deserialization).
@@ -51,7 +51,7 @@ export class PeopleSchemaBuilder {
   /**
    * Build schema with people data labels + custom searchable properties.
    */
-  static buildPeopleSchema(): any[] {
+  static buildPeopleSchema(csvColumns?: string[]): any[] {
     const properties = [];
     const peopleDataMapping = getPeopleDataMapping();
     const optionBProps = getOptionBProperties();
@@ -99,12 +99,17 @@ export class PeopleSchemaBuilder {
       }
     }
 
-    // Custom properties (searchable, no people data label)
-    for (const custom of CUSTOM_PROPERTIES) {
-      assertValidPropertyName(custom.name);
+    // Custom properties (searchable, no people data label — string only, Path B)
+    // Dynamic from CSV when available, hardcoded fallback otherwise
+    const customNames = csvColumns
+      ? getCustomProperties(csvColumns)
+      : CUSTOM_PROPERTIES.map(p => p.name);
+
+    for (const name of customNames) {
+      assertValidPropertyName(name);
       properties.push({
-        name: custom.name,
-        type: custom.type,
+        name,
+        type: 'string',  // MUST be string only (Path B deserialization)
         isSearchable: true,
         isQueryable: true,
         isRetrievable: true,
@@ -117,7 +122,9 @@ export class PeopleSchemaBuilder {
   /**
    * Get the list of custom property names configured for the connector.
    */
-  static getCustomPropertyNames(): string[] {
-    return CUSTOM_PROPERTIES.map(p => p.name);
+  static getCustomPropertyNames(csvColumns?: string[]): string[] {
+    return csvColumns
+      ? getCustomProperties(csvColumns)
+      : CUSTOM_PROPERTIES.map(p => p.name);
   }
 }

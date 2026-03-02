@@ -86,8 +86,10 @@ Handled by `enrich-profiles.ts` (Profile API) and `enrich-connector.ts` (Graph C
 | `mySite` | `personWebSite` | Yes |
 | `birthday` | `personAnniversaries` | Yes |
 
-**Custom Columns (Ignored by Connector)**:
-Extra CSV columns without people data labels are ignored in strict-by-doc mode.
+**Custom Properties (Auto-Detected from CSV)**:
+Any CSV column not in the standard schema is automatically added as a custom connector property (`string` type, Path B). Examples: `VTeam`, `BenefitPlan`, `CostCenter`, `BuildingAccess`, `ProjectCode`, `WritingStyle`, `Specialization`.
+
+> **Schema limitation**: Connector schemas cannot be updated once registered. Adding new custom CSV columns requires deleting the old connector and creating a new one with a new connection ID. The 13 official labels are always included regardless.
 
 **Profile API Only** (no connector labels available - NOT Copilot-searchable):
 | Property | Visible on Profile Card | Copilot Searchable |
