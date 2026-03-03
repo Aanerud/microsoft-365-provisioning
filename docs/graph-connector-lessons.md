@@ -4,7 +4,7 @@ Validated through m365people14–m365people23 (Jan–Feb 2026).
 
 ## Path A vs Path B — The Most Important Rule
 
-Confirmed by Microsoft engineer Morten (internal team):
+Confirmed by Microsoft Graph Connector engineering team:
 
 **Properties WITH a people data label** → Path A (JsonElement deserialization)
 - Safely handles `string`, `stringCollection`, arrays, nested objects
