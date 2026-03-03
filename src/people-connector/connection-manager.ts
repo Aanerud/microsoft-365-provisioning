@@ -44,6 +44,8 @@ export class PeopleConnectionManager {
       description,
       // REQUIRED for people data connectors
       contentCategory: 'people',
+      // Enable Copilot Chat and Search Results visibility
+      enabledContentExperiences: ['search'],
       activitySettings: {
         urlToItemResolvers: []
       }
@@ -211,6 +213,22 @@ export class PeopleConnectionManager {
         return;
       }
       throw error;
+    }
+  }
+
+  /**
+   * Enable search content experience on the connection.
+   * This makes connector data appear in Copilot Chat and Search Results.
+   * Idempotent — safe to call on connections that already have it enabled.
+   */
+  async enableSearchExperience(): Promise<void> {
+    try {
+      await this.betaClient.api(`/external/connections/${this.connectionId}`).patch({
+        enabledContentExperiences: ['search'],
+      });
+      console.log('✓ Enabled search content experience (Copilot/Search visibility)');
+    } catch (error: any) {
+      console.warn(`⚠ Failed to enable search experience: ${error.message}`);
     }
   }
 

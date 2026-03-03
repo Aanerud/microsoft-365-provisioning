@@ -162,6 +162,9 @@ async function enrichViaConnector(
     // Verify schema labels were registered correctly
     await connectionManager.verifySchemaLabels();
 
+    // Enable Copilot/Search visibility (idempotent — safe on existing connections)
+    await connectionManager.enableSearchExperience();
+
     // Register as profile source after schema is ready
     const userDomain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
     const webUrl = `https://${userDomain.replace('.onmicrosoft.com', '.sharepoint.com')}`;

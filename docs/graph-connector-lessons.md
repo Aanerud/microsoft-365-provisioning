@@ -85,6 +85,19 @@ Our `connection-manager.ts` waits 60 seconds after profile source registration a
 
 The internal debug CSV shows `profileSyncEnabled=False` on the first CAPIv2 export cycle. This does NOT mean failure — data typically appears on profiles after subsequent cycles (6–24 hours). True failure is when it stays False across multiple cycles with TSS errors.
 
+### 7. enabledContentExperiences Must Be Set for Copilot/Search
+
+The connection must have `enabledContentExperiences: ['search']` for data to appear in Copilot Chat and Search Results. Without this, the admin portal shows "Data from this connection will not appear in Copilot Chat or Search Results." Added to `connection-manager.ts` in the connection creation payload. Can also be PATCHed onto existing connections via `enableSearchExperience()`.
+
+### 8. Semantic Labels (title, url, etc.) — Not Needed for People Connectors
+
+The admin portal recommends 4 semantic labels: `title`, `lastModifiedBy`, `lastModifiedDateTime`, `url`. These are general connector labels for document-style content (articles, tickets, files). For people data connectors:
+- `title` → Person's name is already in `personName` label
+- `url` → No direct URL to person's profile in our CSV data source
+- `lastModifiedBy` / `lastModifiedDateTime` → Would just be app name + current timestamp
+
+These labels become relevant if the data source changes from CSV to JSON or an API with richer metadata. For CSV-based people enrichment, the 13 people data labels are sufficient.
+
 ## All 13 People Data Labels
 
 ### Group 1: Option B Native (single CSV column)
