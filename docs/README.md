@@ -96,14 +96,14 @@ docs/
 ### Initial Setup
 
 ```bash
-# 1. Setup Graph Connector (Option B, once only)
-npm run enrich-profiles:setup
+# 1. Create users (Option A)
+npm run provision -- --csv config/textcraft-europe.csv
 
-# 2. Create users (Option A)
-npm run provision -- --csv config/agents-template.csv
+# 2. Profile API enrichment (Option A - languages, interests)
+npm run option-a:enrich -- --csv config/textcraft-europe.csv
 
-# 3. Enrich profiles (Option B)
-npm run enrich-profiles -- --csv config/agents-template.csv
+# 3. Graph Connector setup + ingest (Option B - skills, certs, custom props)
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ### Updating Data

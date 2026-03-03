@@ -32,6 +32,7 @@ Confirmed by Microsoft engineer Morten (internal team):
 | m365people21 | 4 labels | VTeam | Working | Reverted to exact m365people17 code structure |
 | m365people22 | 13 labels | VTeam | Working | All labels enabled, minimal code additions to m365people21 baseline |
 | m365people23 | 13 labels | VTeam | Working | Clean baseline (deleted old, fresh deploy) |
+| m365people24 | 13 labels | 7 dynamic custom | **Working** | Dynamic custom properties from CSV (VTeam, BenefitPlan, CostCenter, BuildingAccess, ProjectCode, WritingStyle, Specialization) |
 
 ## Key Lessons
 

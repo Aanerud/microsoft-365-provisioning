@@ -55,6 +55,58 @@ npm run option-b:setup -- --csv config/full-team.csv --connection-id m365people2
 
 ---
 
+## How Data Flows: CSV → Microsoft 365 Profiles
+
+Every CSV column is automatically routed to the right destination:
+
+```
+CSV Column                    → Destination              → Copilot Searchable?
+─────────────────────────────────────────────────────────────────────────────
+Standard Props (name, email,  → Option A: Entra ID       → Via composite labels
+ jobTitle, city, phone, etc.)    (direct user properties)
+
+Profile API (languages,       → Option A: Profile API    → No (no labels)
+ interests)                      (/profile/languages)
+
+Labeled Props (skills,        → Option B: Connector      → Yes (people data labels)
+ aboutMe, certifications,       (Path A deserialization)
+ projects, awards, etc.)
+
+Custom Props (VTeam,          → Option B: Connector      → Yes (searchable, appear
+ BenefitPlan, CostCenter,       (Path B deserialization)    as "CustomPropertiesFrom
+ any non-standard column)                                    Connector" note)
+```
+
+### How Custom Properties Are Detected
+
+The tool reads your CSV header and compares each column against:
+1. The [standard property schema](./src/schema/user-property-schema.ts) (50+ known Microsoft Graph properties)
+2. Internal columns (`name`, `email`, `role`, `ManagerEmail`)
+
+Any column that doesn't match either list becomes a **custom connector property** automatically. For example, if your CSV has:
+
+```csv
+name,email,department,skills,VTeam,CostCenter,ProjectCode
+```
+
+Then `VTeam`, `CostCenter`, and `ProjectCode` are auto-detected as custom properties and added to the connector schema.
+
+### Schema Immutability
+
+Microsoft Graph Connector schemas **cannot be updated** after registration. This means:
+- The 13 official people data labels are **always** included (hardcoded)
+- Custom properties are detected from your CSV **at setup time**
+- If you later add new custom columns to your CSV, you must delete the old connector and create a new one:
+
+```bash
+npm run enrich:delete-connector -- --connection-id m365people24
+npm run option-b:setup -- --csv config/updated.csv --connection-id m365people25
+```
+
+Re-ingestion (`npm run option-b:ingest`) works without recreating the connector — it updates existing items with new values for the same schema.
+
+---
+
 ## What This Tool Does
 
 | Feature | What Happens |
@@ -140,16 +192,21 @@ npm run provision -- --csv config/textcraft-europe.csv
 
 Option A (provision) must run first so Entra ID users exist before connector ingestion.
 
-First-time setup (creates Graph Connector):
+**Option A — Profile API** (languages, interests — no Copilot searchability):
 ```bash
-npm run enrich-profiles:setup
-npm run enrich-profiles:wait  # Wait for schema to be ready (~10 min)
+npm run option-a:enrich -- --csv config/textcraft-europe.csv
 ```
 
-Then enrich:
+**Option B — Graph Connector** (skills, certifications, awards, custom properties — Copilot-searchable):
 ```bash
-npm run enrich-profiles -- --csv config/textcraft-europe.csv
+# First time: creates connection + schema + ingests items
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
+
+# Re-ingest only (connection already exists)
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
+
+The connector schema includes all 13 official people data labels plus any custom CSV columns (auto-detected). Schema cannot be updated — to add new CSV columns, delete the old connector and create a new one with a new ID.
 
 ### Monitor Ingestion Progress
 
@@ -335,11 +392,15 @@ npm run reset-tenant                   # Preview users to delete (dry run)
 npm run reset-tenant:confirm           # Actually delete all non-admin users
 npm run list-users                     # List all users in tenant
 
-# Profile Enrichment (Graph Connector)
-npm run enrich-profiles:setup          # Setup Graph Connector (first time)
-npm run enrich-profiles:wait           # Wait for schema ready (~10 min)
-npm run enrich-profiles                # Enrich user profiles
-npm run enrich-profiles:dry-run        # Preview enrichment
+# Option A: Profile API Enrichment (languages, interests)
+npm run option-a:enrich                # Enrich via Profile API
+npm run option-a:enrich:dry-run        # Preview Profile API enrichment
+
+# Option B: Graph Connector (skills, certs, awards, custom props — Copilot-searchable)
+npm run option-b:setup                 # Create connection + schema + ingest
+npm run option-b:ingest                # Re-ingest items (connection must exist)
+npm run option-b:dry-run               # Preview connector enrichment
+npm run enrich:delete-connector        # Delete connector connection
 
 # Ingestion Verification
 node tools/debug/verify-ingestion-progress.mjs --search-auth delegated --connection-id m365people --csv config/textcraft-europe.csv --query "*"

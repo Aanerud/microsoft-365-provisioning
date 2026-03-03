@@ -172,14 +172,14 @@ AZURE_CLIENT_SECRET=your-client-secret-value
 
 ### Usage
 ```bash
-# Setup connection and schema (first time only)
-npm run enrich-profiles:setup
+# Setup connection + schema + ingest (first time)
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 
-# Ingest people data
-npm run enrich-profiles -- --csv config/agents-template.csv
+# Re-ingest (connection already exists)
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 
-# Dry run (see what would be created)
-npm run enrich-profiles:dry-run
+# Dry run (preview what would be created)
+npm run option-b:dry-run -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ## References

@@ -66,7 +66,7 @@ Option A only writes properties marked `handledBy=optionA` in the schema. Any Op
 - usageLocation, preferredLanguage, preferredDataLocation, mailboxSettings
 
 **Personal (Option B / future)**
-- birthday, interests, skills, schools, pastProjects, responsibilities, mySite
+- birthday, interests, skills, schools, projects, responsibilities, mySite
 - languages (future connector support)
 
 **Security (2 properties)**

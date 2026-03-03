@@ -121,7 +121,7 @@ Stored in Graph Connector external items:
 
 **Official People Data** (with Microsoft labels):
 - skills → personSkills
-- pastProjects → personProjects
+- projects → personProjects
 - certifications → personCertifications
 - awards → personAwards
 - aboutMe → personNote
@@ -241,18 +241,18 @@ Each person becomes an external item:
 ### Setup Phase (One-Time)
 
 ```bash
-npm run enrich-profiles:setup
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 **Results**:
-- ✅ Connection created: `m365provisionpeople`
-- ✅ Schema registered with 16 properties
+- ✅ Connection created with `contentCategory: 'people'`
+- ✅ Schema registered with all 13 people data labels + dynamic custom properties
 - ✅ Schema reached "ready" state (after ~5 minutes)
 
 ### Ingestion Phase (Test Data)
 
 ```bash
-npm run enrich-profiles -- --csv config/agents-test-enrichment.csv
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 **Results**:
@@ -281,21 +281,21 @@ node verify-items.mjs
 ### First-Time Setup
 
 ```bash
-# 1. Setup Graph Connector (once)
-npm run enrich-profiles:setup
+# 1. Create users (Option A)
+npm run provision -- --csv config/textcraft-europe.csv
 
-# 2. Create users (Option A)
-npm run provision -- --csv config/agents-template.csv
+# 2. Profile API enrichment (Option A - languages, interests)
+npm run option-a:enrich -- --csv config/textcraft-europe.csv
 
-# 3. Enrich profiles (Option B)
-npm run enrich-profiles -- --csv config/agents-template.csv
+# 3. Graph Connector setup + ingest (Option B - skills, certs, custom props)
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ### Updating Data
 
 ```bash
-# Update CSV file, then:
-npm run enrich-profiles -- --csv config/agents-template.csv
+# Re-ingest with updated CSV (same connection):
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 Items are replaced (PUT operation), so no need to delete old data.

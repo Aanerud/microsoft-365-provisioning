@@ -160,11 +160,11 @@ Graph Connector (m365provisionpeople)
 
 ### Usage
 ```bash
-# First time: Setup connection and schema
-npm run enrich-profiles:setup
+# First time: Setup connection + schema + ingest
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 
-# Ingest data
-npm run enrich-profiles -- --csv config/agents-template.csv
+# Re-ingest data (connection already exists)
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ### Output
@@ -303,32 +303,32 @@ npm run enrich-profiles    # ~2 minutes (Option B)
 ### Initial Provisioning (New Environment)
 
 ```bash
-# Step 1: Setup Graph Connector (once)
-npm run enrich-profiles:setup
+# Step 1: Create users (Option A)
+npm run provision -- --csv config/textcraft-europe.csv
 
-# Step 2: Create users
-npm run provision -- --csv config/agents-template.csv
+# Step 2: Profile API enrichment (Option A - languages, interests)
+npm run option-a:enrich -- --csv config/textcraft-europe.csv
 
-# Step 3: Enrich profiles
-npm run enrich-profiles -- --csv config/agents-template.csv
+# Step 3: Graph Connector setup + ingest (Option B - skills, certs, custom props)
+npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ### Updating Existing Users
 
 ```bash
 # Update standard properties (job titles, departments, etc.)
-npm run provision -- --csv config/agents-template.csv
+npm run provision -- --csv config/textcraft-europe.csv
 
-# Update enrichment data (skills, interests, etc.)
-npm run enrich-profiles -- --csv config/agents-template.csv
+# Update connector data (skills, certs, custom props)
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
 ```
 
 ### Adding New Users
 
 ```bash
 # Add new rows to CSV, then:
-npm run provision          # Creates new users in Entra ID
-npm run enrich-profiles    # Creates enrichment data
+npm run provision -- --csv config/textcraft-europe.csv                                        # Creates new users
+npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24     # Enriches profiles
 ```
 
 ## Benefits of This Architecture
