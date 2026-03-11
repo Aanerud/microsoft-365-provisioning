@@ -26,6 +26,12 @@ const ENABLED_LABELS = new Set([
   'personEmails',
   'personPhones',
   'personWebAccounts',
+  // Group 3: Additional people data labels
+  'personEducationalActivities',
+  'personInterests',
+  'personLanguages',
+  'personPublications',
+  'personPatents',
 ]);
 
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
@@ -203,6 +209,54 @@ export class PeopleItemIngester {
     }
 
     // personWebAccounts — no CSV data yet, skipped when empty
+
+    // personLanguages → [{"displayName":"...","tag":"..."}]
+    if (csvRow.languages) {
+      const langs = normalizeToArray(csvRow.languages);
+      if (langs.length > 0) {
+        properties['languages@odata.type'] = 'Collection(String)';
+        properties.languages = langs.map((lang: any) => {
+          if (typeof lang === 'object' && lang !== null) return JSON.stringify(lang);
+          return JSON.stringify({ displayName: String(lang) });
+        });
+      }
+    }
+
+    // personInterests → [{"displayName":"..."}]
+    if (csvRow.interests) {
+      const interests = normalizeToArray(csvRow.interests);
+      if (interests.length > 0) {
+        properties['interests@odata.type'] = 'Collection(String)';
+        properties.interests = interests.map(serializeDisplayNameItem);
+      }
+    }
+
+    // personEducationalActivities → [{"displayName":"..."}]
+    if (csvRow.educationalActivities) {
+      const edu = normalizeToArray(csvRow.educationalActivities);
+      if (edu.length > 0) {
+        properties['educationalActivities@odata.type'] = 'Collection(String)';
+        properties.educationalActivities = edu.map(serializeDisplayNameItem);
+      }
+    }
+
+    // personPublications → [{"displayName":"..."}]
+    if (csvRow.publications) {
+      const pubs = normalizeToArray(csvRow.publications);
+      if (pubs.length > 0) {
+        properties['publications@odata.type'] = 'Collection(String)';
+        properties.publications = pubs.map(serializeDisplayNameItem);
+      }
+    }
+
+    // personPatents → [{"displayName":"..."}]
+    if (csvRow.patents) {
+      const patents = normalizeToArray(csvRow.patents);
+      if (patents.length > 0) {
+        properties['patents@odata.type'] = 'Collection(String)';
+        properties.patents = patents.map(serializeDisplayNameItem);
+      }
+    }
 
     return {
       id: itemId,

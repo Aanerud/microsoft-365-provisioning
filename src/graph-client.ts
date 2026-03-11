@@ -2,6 +2,8 @@ import { Client } from '@microsoft/microsoft-graph-client';
 import { ClientSecretCredential } from '@azure/identity';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.js';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 dotenv.config();
 
@@ -949,7 +951,8 @@ export class GraphClient {
 }
 
 // CLI support for direct execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const __filename_gc = fileURLToPath(import.meta.url);
+if (__filename_gc === path.resolve(process.argv[1])) {
   const command = process.argv[2];
 
   // Commands that require delegated permissions (must use browser auth)

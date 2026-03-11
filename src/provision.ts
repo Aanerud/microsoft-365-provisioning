@@ -3,6 +3,8 @@
 import fs from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import { GraphClient } from './graph-client.js';
 import { ConfigExporter, type AgentConfig } from './export.js';
 import { BrowserAuthServer } from './auth/browser-auth-server.js';
@@ -759,6 +761,7 @@ async function main() {
 }
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+const __filename_prov = fileURLToPath(import.meta.url);
+if (__filename_prov === path.resolve(process.argv[1])) {
   main();
 }

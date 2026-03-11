@@ -41,7 +41,8 @@ const STANDARD_USER_FIELDS = new Set([
 ]);
 
 // Profile API fields (handled by Option A enrichment, not connectors)
-const PROFILE_API_FIELDS = new Set(['languages', 'interests']);
+// Note: languages and interests are now ALSO sent via connector (personLanguages/personInterests labels)
+const PROFILE_API_FIELDS = new Set<string>([]);
 
 interface ConnectorOptions {
   csvPath: string;

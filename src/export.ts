@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -250,7 +251,8 @@ export class ConfigExporter {
 }
 
 // CLI support for direct execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const __filename_exp = fileURLToPath(import.meta.url);
+if (__filename_exp === path.resolve(process.argv[1])) {
   const command = process.argv[2];
   const exporter = new ConfigExporter();
 
