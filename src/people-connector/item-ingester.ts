@@ -72,6 +72,61 @@ function serializeAnniversaryItem(item: any): string {
   return JSON.stringify({ type: 'birthday', date: String(item) });
 }
 
+// personInterest entity: displayName, description, categories, collaborationTags, webUrl
+function serializeInterestItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ displayName: String(item) });
+}
+
+// educationalActivity entity: institution (institutionData), program (educationalActivityDetail), dates
+// PCP rule: fieldsOfStudy, activities, awards should be arrays (PCP uses JsonElement, not String)
+function serializeEducationalActivityItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    // Normalize program fields that PCP expects as arrays
+    if (item.program && typeof item.program === 'object') {
+      const program = { ...item.program };
+      if (typeof program.fieldsOfStudy === 'string') {
+        program.fieldsOfStudy = [program.fieldsOfStudy];
+      }
+      if (typeof program.activities === 'string') {
+        program.activities = [program.activities];
+      }
+      if (typeof program.awards === 'string') {
+        program.awards = [program.awards];
+      }
+      return JSON.stringify({ ...item, program });
+    }
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ institution: { displayName: String(item) } });
+}
+
+// languageProficiency entity: displayName, tag, reading, spoken, written
+function serializeLanguageItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ displayName: String(item) });
+}
+
+// itemPublication entity: displayName, description, publisher, publishedDate, thumbnailUrl, webUrl
+function serializePublicationItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ displayName: String(item) });
+}
+
+// itemPatent entity: displayName, description, number, isPending, issuedDate, issuingAuthority, webUrl
+function serializePatentItem(item: any): string {
+  if (typeof item === 'object' && item !== null) {
+    return JSON.stringify(item);
+  }
+  return JSON.stringify({ displayName: String(item) });
+}
+
 export interface PeopleItem {
   email: string;
   [key: string]: any;
@@ -210,51 +265,48 @@ export class PeopleItemIngester {
 
     // personWebAccounts — no CSV data yet, skipped when empty
 
-    // personLanguages → [{"displayName":"...","tag":"..."}]
+    // personLanguages → languageProficiency entity
     if (csvRow.languages) {
       const langs = normalizeToArray(csvRow.languages);
       if (langs.length > 0) {
         properties['languages@odata.type'] = 'Collection(String)';
-        properties.languages = langs.map((lang: any) => {
-          if (typeof lang === 'object' && lang !== null) return JSON.stringify(lang);
-          return JSON.stringify({ displayName: String(lang) });
-        });
+        properties.languages = langs.map(serializeLanguageItem);
       }
     }
 
-    // personInterests → [{"displayName":"..."}]
+    // personInterests → personInterest entity
     if (csvRow.interests) {
       const interests = normalizeToArray(csvRow.interests);
       if (interests.length > 0) {
         properties['interests@odata.type'] = 'Collection(String)';
-        properties.interests = interests.map(serializeDisplayNameItem);
+        properties.interests = interests.map(serializeInterestItem);
       }
     }
 
-    // personEducationalActivities → [{"displayName":"..."}]
+    // personEducationalActivities → educationalActivity entity
     if (csvRow.educationalActivities) {
       const edu = normalizeToArray(csvRow.educationalActivities);
       if (edu.length > 0) {
         properties['educationalActivities@odata.type'] = 'Collection(String)';
-        properties.educationalActivities = edu.map(serializeDisplayNameItem);
+        properties.educationalActivities = edu.map(serializeEducationalActivityItem);
       }
     }
 
-    // personPublications → [{"displayName":"..."}]
+    // personPublications → itemPublication entity
     if (csvRow.publications) {
       const pubs = normalizeToArray(csvRow.publications);
       if (pubs.length > 0) {
         properties['publications@odata.type'] = 'Collection(String)';
-        properties.publications = pubs.map(serializeDisplayNameItem);
+        properties.publications = pubs.map(serializePublicationItem);
       }
     }
 
-    // personPatents → [{"displayName":"..."}]
+    // personPatents → itemPatent entity
     if (csvRow.patents) {
       const patents = normalizeToArray(csvRow.patents);
       if (patents.length > 0) {
         properties['patents@odata.type'] = 'Collection(String)';
-        properties.patents = patents.map(serializeDisplayNameItem);
+        properties.patents = patents.map(serializePatentItem);
       }
     }
 

@@ -1,0 +1,164 @@
+[
+  {
+    "email": "isabella.rossi@contoso.onmicrosoft.com",
+    "name": "Isabella Rossi",
+    "givenName": "Isabella",
+    "surname": "Rossi",
+    "displayName": "Isabella Rossi",
+    "jobTitle": "CEO",
+    "department": "Executive",
+    "companyName": "TextCraft Europe",
+    "role": "executive",
+    "city": "Milan",
+    "country": "Italy",
+    "skills": ["Strategic Planning", "Publishing Industry", "Corporate Communications"],
+    "interests": [
+      {
+        "displayName": "European Business Strategy",
+        "description": "Deep expertise in pan-European market entry and scaling",
+        "categories": ["professional"],
+        "collaborationTags": ["askMeAbout", "ableToMentor"]
+      },
+      {
+        "displayName": "Sustainable Publishing",
+        "categories": ["professional"],
+        "collaborationTags": ["wantsToLearn"]
+      },
+      "Wine Culture"
+    ],
+    "educationalActivities": [
+      {
+        "institution": {
+          "displayName": "Bocconi University",
+          "description": "Premier Italian business school",
+          "location": { "city": "Milan", "countryOrRegion": "Italy" },
+          "webUrl": "https://www.unibocconi.eu"
+        },
+        "program": {
+          "displayName": "Master of Business Administration",
+          "abbreviation": "MBA",
+          "fieldsOfStudy": ["Finance", "Entrepreneurship"],
+          "grade": "110/110 cum laude",
+          "description": "Focus on European market strategy and publishing economics"
+        },
+        "startMonthYear": "2012-09",
+        "endMonthYear": "2014-06",
+        "completionMonthYear": "2014-06"
+      },
+      {
+        "institution": {
+          "displayName": "INSEAD",
+          "location": { "city": "Fontainebleau", "countryOrRegion": "France" }
+        },
+        "program": {
+          "displayName": "Executive Leadership Program"
+        },
+        "startMonthYear": "2020-03",
+        "endMonthYear": "2020-06"
+      }
+    ],
+    "languages": [
+      { "displayName": "Italian", "tag": "it-IT", "reading": "nativeOrBilingual", "spoken": "nativeOrBilingual", "written": "nativeOrBilingual" },
+      { "displayName": "English", "tag": "en-US", "reading": "fullProfessional", "spoken": "fullProfessional", "written": "fullProfessional" },
+      { "displayName": "French", "tag": "fr-FR", "reading": "professionalWorking", "spoken": "professionalWorking", "written": "professionalWorking" }
+    ],
+    "publications": [
+      {
+        "displayName": "The Future of European Publishing",
+        "description": "An analysis of digital transformation in European publishing houses",
+        "publisher": "Harvard Business Review",
+        "publishedDate": "2023-11-01",
+        "webUrl": "https://hbr.org/2023/11/future-european-publishing"
+      }
+    ],
+    "patents": [
+      {
+        "displayName": "Method for Distributed Data Processing",
+        "description": "A novel approach to parallel data processing using adaptive load balancing",
+        "number": "US-10234567-B2",
+        "isPending": false,
+        "issuedDate": "2021-08-15T00:00:00Z",
+        "issuingAuthority": "United States Patent and Trademark Office",
+        "webUrl": "https://patents.google.com/patent/US10234567B2"
+      },
+      {
+        "displayName": "System and Method for Solving Useless Problems in Substrate",
+        "description": "A groundbreaking approach to identifying, escalating, and ultimately ignoring problems",
+        "number": "US-2025-0000001-A1",
+        "isPending": true,
+        "issuingAuthority": "United States Patent and Trademark Office",
+        "webUrl": "https://patents.google.com/patent/US20250000001A1"
+      }
+    ],
+    "certifications": ["INSEAD Executive Leadership Program", "EFQM Business Excellence"],
+    "awards": ["European Women in Business Leader 2023", "Italian Publishing Innovation Award 2021"],
+    "aboutMe": "Founder and CEO of TextCraft Europe with 20+ years in publishing and content creation.",
+    "mySite": "https://isabella-rossi.com",
+    "VTeam": "Executive Leadership",
+    "CostCenter": "EXEC"
+  },
+  {
+    "email": "erik.lindqvist@contoso.onmicrosoft.com",
+    "name": "Erik Lindqvist",
+    "givenName": "Erik",
+    "surname": "Lindqvist",
+    "displayName": "Erik Lindqvist",
+    "jobTitle": "CTO",
+    "department": "Technology",
+    "companyName": "TextCraft Europe",
+    "role": "executive",
+    "city": "Stockholm",
+    "country": "Sweden",
+    "skills": ["Cloud Architecture", "TypeScript", "Distributed Systems", "Machine Learning"],
+    "interests": [
+      {
+        "displayName": "AI in Publishing",
+        "description": "Applying LLMs and transformer architectures to content workflows",
+        "categories": ["technology", "research"],
+        "collaborationTags": ["askMeAbout", "ableToMentor"],
+        "webUrl": "https://arxiv.org/list/cs.CL"
+      },
+      "Open Source Software"
+    ],
+    "educationalActivities": [
+      {
+        "institution": {
+          "displayName": "KTH Royal Institute of Technology",
+          "location": { "city": "Stockholm", "countryOrRegion": "Sweden" },
+          "webUrl": "https://www.kth.se"
+        },
+        "program": {
+          "displayName": "Master of Science in Computer Science",
+          "abbreviation": "MSc",
+          "fieldsOfStudy": ["Computer Science", "Distributed Systems"],
+          "grade": "Distinction",
+          "activities": ["ACM Programming Contest", "Research Assistant"],
+          "awards": ["Best Thesis Award 2010"]
+        },
+        "startMonthYear": "2006-09",
+        "endMonthYear": "2011-06",
+        "completionMonthYear": "2011-06"
+      }
+    ],
+    "languages": [
+      { "displayName": "Swedish", "tag": "sv-SE", "reading": "nativeOrBilingual", "spoken": "nativeOrBilingual", "written": "nativeOrBilingual" },
+      { "displayName": "English", "tag": "en-US", "reading": "fullProfessional", "spoken": "fullProfessional", "written": "fullProfessional" }
+    ],
+    "publications": [
+      {
+        "displayName": "Scaling Content Platforms with Event-Driven Architecture",
+        "publisher": "IEEE Software",
+        "publishedDate": "2024-02-15",
+        "thumbnailUrl": "https://example.com/thumb/scaling-platforms.jpg",
+        "webUrl": "https://ieeexplore.ieee.org/example"
+      }
+    ],
+    "patents": [],
+    "certifications": ["AWS Solutions Architect Professional", "Google Cloud Professional Data Engineer"],
+    "awards": ["Nordic Tech Leader of the Year 2024"],
+    "aboutMe": "CTO passionate about building scalable content platforms. 15 years in distributed systems.",
+    "mySite": "https://erik-lindqvist.dev",
+    "VTeam": "Platform Engineering",
+    "CostCenter": "TECH"
+  }
+]

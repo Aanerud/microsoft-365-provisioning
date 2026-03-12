@@ -28,7 +28,7 @@ CSV Data
     │   - Profile API: languages, interests (src/enrich-profiles.ts)
     │   - Auth: Delegated (browser login)
     │
-    └─► Option B: Graph Connector Pipeline (all 13 people data labels)
+    └─► Option B: Graph Connector Pipeline (all 18 people data labels)
         - Native: skills, aboutMe, certs, projects, awards, birthday, mySite
         - Composite: name, position, addresses, emails, phones
         - Custom: VTeam (string only)
@@ -49,10 +49,10 @@ CSV Data
 
 ### Graph Connectors for Copilot Searchability
 
-Graph Connectors with **people data labels** enable Copilot to search for people based on their skills, notes, and custom properties. All 13 official labels are enabled and validated (m365people23). Key requirements:
+Graph Connectors with **people data labels** enable Copilot to search for people based on their skills, notes, and custom properties. All 18 labels enabled (13 original validated m365people23 + 5 new). Key requirements:
 - Connection must have `contentCategory: 'people'`
 - Schema must use `personAccount` label (required for user mapping)
-- All 13 people data labels enabled (see full list below)
+- All 18 people data labels enabled (see full list below)
 - Items must have ACL set to `everyone`/`grant`
 - Wait 6–24 hours after ingestion for Microsoft 365 to index
 
@@ -71,7 +71,7 @@ Confirmed by Microsoft engineer — the connector backend has two deserializatio
 Cannot get the value of a token type 'StartArray' as a string. Path: $.skills
 ```
 
-#### All 13 People Data Labels (validated m365people23)
+#### All 18 People Data Labels (13 original + 5 new)
 
 **Group 1 — Option B native** (single CSV column → entity):
 
@@ -84,6 +84,18 @@ Cannot get the value of a token type 'StartArray' as a string. Path: $.skills
 | `personAwards` | stringCollection | awards | `{"displayName":"..."}` |
 | `personAnniversaries` | stringCollection | birthday | `{"type":"birthday","date":"..."}` |
 | `personWebSite` | string | mySite | `{"webUrl":"..."}` |
+
+**Group 3 — Rich entities** (CSV: displayName-only, JSON: full PCP entity):
+
+| Label | Type | Column | CSV Serialization | JSON: Full Entity |
+|-------|------|--------|-------------------|-------------------|
+| `personInterests` | stringCollection | interests | `{"displayName":"..."}` | `personInterest` (+ categories, collaborationTags, description, webUrl) |
+| `personEducationalActivities` | stringCollection | educationalActivities | `{"institution":{"displayName":"..."}}` | `educationalActivity` (+ institution.location, program.fieldsOfStudy[], etc.) |
+| `personLanguages` | stringCollection | languages | `{"displayName":"..."}` | `languageProficiency` (+ tag, reading, spoken, written) |
+| `personPublications` | stringCollection | publications | `{"displayName":"..."}` | `itemPublication` (+ publisher, publishedDate, thumbnailUrl, webUrl) |
+| `personPatents` | stringCollection | patents | `{"displayName":"..."}` | `itemPatent` (+ number, isPending, issuedDate, issuingAuthority, webUrl) |
+
+**PCP field type rule**: Graph API docs show `educationalActivityDetail.fieldsOfStudy`, `.activities`, `.awards` as `String`. PCP Path A uses `JsonElement` — send these as arrays (`string[]`) for proper downstream propagation.
 
 **Group 2 — Composite** (multiple Option A CSV columns → entity):
 
@@ -219,13 +231,26 @@ npm run update-licenses          # Add missing licenses
 
 ### Option B: Graph Connector Pipeline
 ```bash
-npm run option-b:setup           # Create connection + schema + ingest
+npm run option-b:setup           # Create connection + schema + ingest (CSV)
 npm run option-b:ingest          # Ingest items (connection must exist)
 npm run option-b:dry-run         # Preview without making changes
+npm run option-b:setup:json      # Setup + ingest from JSON
+npm run option-b:ingest:json     # Ingest from JSON
+npm run option-b:dry-run:json    # Preview JSON input
 npm run enrich:wait              # Wait for schema provisioning
 npm run enrich:delete-connector  # Delete connector connection
 npm run build-oid-cache          # Build OID cache from Graph
 ```
+
+### JSON Input (Both Options)
+Both Option A and Option B accept `--json <path>` for rich data input:
+```bash
+npm run provision -- --json config/sample-rich.json           # Option A from JSON
+npm run option-b:dry-run -- --json config/sample-rich.json    # Option B from JSON
+npm run option-b:dry-run -- --csv config/users.csv --json config/rich.json  # Merge mode
+```
+CSV provides simple `displayName`-only data. JSON provides full PCP entity schemas.
+When both are provided, JSON overrides CSV per-property.
 
 ### Utilities
 ```bash
@@ -243,6 +268,7 @@ M365-Agent-Provisioning/
 │   ├── provision.ts              # Option A - User provisioning
 │   ├── enrich-profiles.ts        # Option A - Profile API enrichment (languages, interests)
 │   ├── enrich-connector.ts       # Option B - Graph Connector pipeline (skills, aboutMe, etc.)
+│   ├── json-loader.ts            # Shared JSON input loader (both Options)
 │   ├── profile-writer.ts         # Profile API writer class
 │   ├── graph-client.ts           # Microsoft Graph client
 │   ├── oid-cache.ts              # OID cache (UPN → object ID mapping)
@@ -256,7 +282,9 @@ M365-Agent-Provisioning/
 │   └── schema/
 │       └── user-property-schema.ts
 ├── config/
-│   └── textcraft-europe.csv      # Sample data
+│   ├── textcraft-europe.csv      # Sample data (CSV)
+│   ├── profile-data.json         # Rich profile data (Profile API format, 95 records)
+│   └── sample-rich.json          # Sample rich JSON input (flat format, 2 records)
 ├── tools/
 │   ├── debug/                    # Debug scripts
 │   └── admin/                    # Admin utilities
@@ -270,6 +298,7 @@ M365-Agent-Provisioning/
 | `src/provision.ts` | User provisioning (Option A) |
 | `src/enrich-profiles.ts` | Profile API enrichment - languages, interests (Option A) |
 | `src/enrich-connector.ts` | Graph Connector pipeline - skills, aboutMe, etc. (Option B) |
+| `src/json-loader.ts` | Shared JSON input loader + validator (both Options) |
 | `src/profile-writer.ts` | Profile API writer (languages, interests, etc.) |
 | `src/oid-cache.ts` | OID cache (UPN → object ID mapping) |
 | `src/people-connector/connection-manager.ts` | Graph Connector connection + profile source registration |
@@ -336,5 +365,5 @@ The Profile API doesn't accept "Irish" as a language name. Needs valid BCP-47 ta
 
 ---
 
-**Last Updated**: 2026-02-27
-**Version**: 5.0.0 (All 13 people data labels enabled, validated with m365people23)
+**Last Updated**: 2026-03-12
+**Version**: 6.0.0 (18 people data labels + JSON input support for both Options)

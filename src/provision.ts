@@ -15,6 +15,7 @@ import {
   getOptionBProperties,
   getCustomProperties,
 } from './schema/user-property-schema.js';
+import { loadRowsFromJson } from './json-loader.js';
 
 dotenv.config();
 
@@ -67,18 +68,24 @@ class AgentProvisioner {
   }
 
   /**
-   * Load agent definitions from CSV file
+   * Load agent definitions from CSV or JSON file
    */
-  async loadAgentsFromCsv(csvPath: string): Promise<AgentDefinition[]> {
+  async loadAgentsFromFile(filePath: string): Promise<AgentDefinition[]> {
     try {
-      const content = await fs.readFile(csvPath, 'utf-8');
-      const records = parse(content, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      });
+      let records: any[];
 
-      console.log(`✓ Loaded ${records.length} agent definitions from ${csvPath}\n`);
+      if (filePath.endsWith('.json')) {
+        records = await loadRowsFromJson(filePath);
+        console.log(`✓ Loaded ${records.length} agent definitions from JSON ${filePath}\n`);
+      } else {
+        const content = await fs.readFile(filePath, 'utf-8');
+        records = parse(content, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        });
+        console.log(`✓ Loaded ${records.length} agent definitions from ${filePath}\n`);
+      }
 
       // Validate required columns
       for (let i = 0; i < records.length; i++) {
@@ -185,8 +192,11 @@ class AgentProvisioner {
    */
   async provisionAll(options: ProvisionOptions): Promise<void> {
     console.log('🚀 Starting Agent Provisioning (State Management Mode)\n');
+    // Determine input file path (JSON takes precedence if both provided)
+    const inputPath = (options as any).jsonPath || options.csvPath;
+
     console.log('Configuration:');
-    console.log(`  CSV: ${options.csvPath}`);
+    console.log(`  Input: ${inputPath}`);
     console.log(`  Output: ${options.outputPath}`);
     console.log(`  Mode: ${options.dryRun ? 'DRY RUN' : 'LIVE'}`);
     console.log(`  Skip Licenses: ${options.skipLicenses}`);
@@ -196,13 +206,11 @@ class AgentProvisioner {
     console.log('  Beta Features: ✓ Enabled (always)');
     console.log('');
 
-    // Load agent definitions from CSV
-    const agents = await this.loadAgentsFromCsv(options.csvPath);
+    // Load agent definitions from CSV or JSON
+    const agents = await this.loadAgentsFromFile(inputPath);
 
-    // Get CSV column names for custom property detection
-    const content = await fs.readFile(options.csvPath, 'utf-8');
-    const records = parse(content, { columns: true, skip_empty_lines: true, trim: true });
-    const csvColumns = records.length > 0 ? Object.keys(records[0]) : [];
+    // Get column names for custom property detection
+    const csvColumns = agents.length > 0 ? Object.keys(agents[0]) : [];
 
     // Initialize state management system
     const stateManager = new StateManager({
@@ -586,6 +594,9 @@ function parseArgs(): Partial<ProvisionOptions> & { command?: string } {
         break;
       case '--csv':
         options.csvPath = args[++i];
+        break;
+      case '--json':
+        (options as any).jsonPath = args[++i];
         break;
       case '--output':
         options.outputPath = args[++i];
