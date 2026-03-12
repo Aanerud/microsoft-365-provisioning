@@ -29,6 +29,7 @@ import { PeopleItemIngester } from './people-connector/item-ingester.js';
 import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
 import { getOptionBProperties } from './schema/user-property-schema.js';
 import { applyOidCacheToRows, ensureOidCacheWithAuth, loadOidCache, getOidCachePath } from './oid-cache.js';
+import { loadRowsFromJson, validateJsonInput } from './json-loader.js';
 
 dotenv.config();
 
@@ -41,10 +42,12 @@ const STANDARD_USER_FIELDS = new Set([
 ]);
 
 // Profile API fields (handled by Option A enrichment, not connectors)
-const PROFILE_API_FIELDS = new Set(['languages', 'interests']);
+// Note: languages and interests are now ALSO sent via connector (personLanguages/personInterests labels)
+const PROFILE_API_FIELDS = new Set<string>([]);
 
 interface ConnectorOptions {
-  csvPath: string;
+  csvPath?: string;
+  jsonPath?: string;
   connectionId: string;
   setupConnector: boolean;
   dryRun: boolean;
@@ -59,7 +62,6 @@ function getLabeledOptionBFieldNames(): string[] {
 function parseArgs(): ConnectorOptions {
   const args = process.argv.slice(2);
   const options: ConnectorOptions = {
-    csvPath: 'config/textcraft-europe.csv',
     connectionId: 'm365people3',
     setupConnector: false,
     dryRun: false,
@@ -69,6 +71,9 @@ function parseArgs(): ConnectorOptions {
     switch (args[i]) {
       case '--csv':
         options.csvPath = args[++i];
+        break;
+      case '--json':
+        options.jsonPath = args[++i];
         break;
       case '--connection-id':
         options.connectionId = args[++i];
@@ -80,6 +85,11 @@ function parseArgs(): ConnectorOptions {
         options.dryRun = true;
         break;
     }
+  }
+
+  // Default to CSV if neither specified
+  if (!options.csvPath && !options.jsonPath) {
+    options.csvPath = 'config/textcraft-europe.csv';
   }
 
   return options;
@@ -108,6 +118,71 @@ async function loadConnectorRows(csvPath: string): Promise<{
   );
 
   return { rows: records, csvColumns, ignoredFields };
+}
+
+async function loadConnectorRowsFromJson(jsonPath: string): Promise<{
+  rows: any[];
+  allColumns: string[];
+  ignoredFields: string[];
+}> {
+  const records = await loadRowsFromJson(jsonPath);
+
+  // Validate
+  const validation = validateJsonInput(records);
+  if (!validation.valid) {
+    throw new Error(`JSON validation failed:\n  ${validation.errors.join('\n  ')}`);
+  }
+  if (validation.warnings.length > 0) {
+    console.log(`JSON warnings:\n  ${validation.warnings.join('\n  ')}`);
+  }
+
+  // Collect all unique keys across all records
+  const allColumns = [...new Set(records.flatMap(r => Object.keys(r)))];
+
+  // Field routing
+  const labeledOptionBFields = new Set(getLabeledOptionBFieldNames());
+  const customPropertyNames = new Set(PeopleSchemaBuilder.getCustomPropertyNames(allColumns));
+  const ignoredFields = allColumns.filter(col =>
+    col !== 'email' && col !== 'externalDirectoryObjectId' &&
+    !STANDARD_USER_FIELDS.has(col) &&
+    !PROFILE_API_FIELDS.has(col) &&
+    !labeledOptionBFields.has(col) &&
+    !customPropertyNames.has(col)
+  );
+
+  return { rows: records, allColumns, ignoredFields };
+}
+
+async function mergeInputSources(csvPath: string, jsonPath: string): Promise<{
+  rows: any[];
+  allColumns: string[];
+  ignoredFields: string[];
+}> {
+  const csv = await loadConnectorRows(csvPath);
+  const json = await loadConnectorRowsFromJson(jsonPath);
+
+  // Index JSON records by email (lowercase)
+  const jsonByEmail = new Map(json.rows.map(r => [r.email.toLowerCase(), r]));
+
+  // Merge: CSV provides base, JSON overrides per-property
+  const merged = csv.rows.map(csvRow => {
+    const jsonRow = jsonByEmail.get(csvRow.email?.toLowerCase());
+    if (!jsonRow) return csvRow;
+    return { ...csvRow, ...jsonRow };
+  });
+
+  // Add JSON-only records (not in CSV)
+  const csvEmails = new Set(csv.rows.map((r: any) => r.email?.toLowerCase()));
+  for (const jsonRow of json.rows) {
+    if (!csvEmails.has(jsonRow.email.toLowerCase())) {
+      merged.push(jsonRow);
+    }
+  }
+
+  const allColumns = [...new Set([...csv.csvColumns, ...json.allColumns])];
+  const ignoredFields = [...new Set([...csv.ignoredFields, ...json.ignoredFields])];
+
+  return { rows: merged, allColumns, ignoredFields };
 }
 
 async function enrichViaConnector(
@@ -234,7 +309,8 @@ async function run(): Promise<void> {
 
   console.log('Option B: Graph Connector Enrichment\n');
   console.log('Configuration:');
-  console.log(`  CSV: ${options.csvPath}`);
+  if (options.csvPath) console.log(`  CSV: ${options.csvPath}`);
+  if (options.jsonPath) console.log(`  JSON: ${options.jsonPath}`);
   console.log(`  Connection ID: ${options.connectionId}`);
   console.log(`  Setup Connector: ${options.setupConnector ? 'Yes' : 'No'}`);
   console.log(`  Dry Run: ${options.dryRun ? 'Yes' : 'No'}`);
@@ -242,17 +318,48 @@ async function run(): Promise<void> {
   console.log('Note: Run Option A provisioning before Option B enrichment.');
   console.log('');
 
-  // Verify CSV exists
-  try {
-    await fs.access(options.csvPath);
-  } catch {
-    console.error(`Error: CSV file not found: ${options.csvPath}`);
-    process.exit(1);
+  // Verify input files exist
+  if (options.csvPath) {
+    try {
+      await fs.access(options.csvPath);
+    } catch {
+      console.error(`Error: CSV file not found: ${options.csvPath}`);
+      process.exit(1);
+    }
+  }
+  if (options.jsonPath) {
+    try {
+      await fs.access(options.jsonPath);
+    } catch {
+      console.error(`Error: JSON file not found: ${options.jsonPath}`);
+      process.exit(1);
+    }
   }
 
-  // Load CSV rows
-  console.log('Loading profiles from CSV...');
-  const { rows: connectorRows, csvColumns, ignoredFields } = await loadConnectorRows(options.csvPath);
+  // Load rows from CSV, JSON, or both
+  let connectorRows: any[];
+  let csvColumns: string[];
+  let ignoredFields: string[];
+
+  if (options.csvPath && options.jsonPath) {
+    console.log('Loading profiles from CSV + JSON (merge mode)...');
+    const merged = await mergeInputSources(options.csvPath, options.jsonPath);
+    connectorRows = merged.rows;
+    csvColumns = merged.allColumns;
+    ignoredFields = merged.ignoredFields;
+  } else if (options.jsonPath) {
+    console.log('Loading profiles from JSON...');
+    const json = await loadConnectorRowsFromJson(options.jsonPath);
+    connectorRows = json.rows;
+    csvColumns = json.allColumns;
+    ignoredFields = json.ignoredFields;
+  } else {
+    console.log('Loading profiles from CSV...');
+    const csv = await loadConnectorRows(options.csvPath!);
+    connectorRows = csv.rows;
+    csvColumns = csv.csvColumns;
+    ignoredFields = csv.ignoredFields;
+  }
   console.log(`Loaded ${connectorRows.length} profiles`);
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
@@ -272,7 +379,8 @@ async function run(): Promise<void> {
 
   // Load OID cache from disk (built by Option A provisioning or npm run build-oid-cache)
   // Falls back to browser login if cache doesn't exist
-  const cachePath = getOidCachePath(options.csvPath);
+  const inputPath = options.csvPath || options.jsonPath!;
+  const cachePath = getOidCachePath(inputPath);
   let oidCacheResult;
   const existingCache = await loadOidCache(cachePath);
   if (existingCache) {
@@ -280,7 +388,7 @@ async function run(): Promise<void> {
   } else {
     console.log('OID cache not found on disk. Will authenticate to build it...');
     oidCacheResult = await ensureOidCacheWithAuth({
-      csvPath: options.csvPath,
+      csvPath: inputPath,
       tenantId,
       clientId,
       authPort: parseInt(process.env.AUTH_SERVER_PORT || '5544', 10),

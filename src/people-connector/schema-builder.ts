@@ -20,6 +20,12 @@ const ENABLED_LABELS = new Set([
   'personEmails',          // stringCollection → itemEmail
   'personPhones',          // stringCollection → itemPhone
   'personWebAccounts',     // stringCollection → webAccount (no CSV data yet)
+  // Group 3: Additional people data labels
+  'personEducationalActivities', // stringCollection → educationalActivity
+  'personInterests',             // stringCollection → personInterest
+  'personLanguages',             // stringCollection → languageProficiency
+  'personPublications',          // stringCollection → itemPublication
+  'personPatents',               // stringCollection → itemPatent
 ]);
 
 // Custom properties: searchable by Copilot/Search but not mapped to profile cards.
@@ -65,6 +71,15 @@ export class PeopleSchemaBuilder {
     });
 
     // Labeled properties (Copilot-searchable via people data labels)
+    // Some labels need isQueryable/isSearchable/isRetrievable set to false
+    const NON_SEARCHABLE_LABELS = new Set([
+      'personEducationalActivities',
+      'personInterests',
+      'personLanguages',
+      'personPublications',
+      'personPatents',
+    ]);
+
     for (const prop of optionBProps) {
       const label = peopleDataMapping.get(prop.name);
       if (!label || !ENABLED_LABELS.has(label)) {
@@ -75,11 +90,19 @@ export class PeopleSchemaBuilder {
       const overrideType = LABEL_TYPE_OVERRIDES.get(label);
       const schemaType = overrideType ?? (prop.type === 'array' ? 'stringCollection' : 'string');
 
-      properties.push({
+      const entry: any = {
         name: prop.name,
         type: schemaType,
         labels: [label],
-      });
+      };
+
+      if (NON_SEARCHABLE_LABELS.has(label)) {
+        entry.isQueryable = false;
+        entry.isSearchable = false;
+        entry.isRetrievable = false;
+      }
+
+      properties.push(entry);
     }
 
     // Composite labeled properties (data from multiple Option A CSV columns)

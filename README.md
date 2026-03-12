@@ -1,135 +1,173 @@
-# How a CSV File Can Be the Master of Your M365 Tenant User Provisioning
+# Make Copilot Know Your People
 
-> **A Learning Project**: This tool was built to explore Microsoft Graph APIs, OAuth 2.0 flows, and Graph Connectors. It works, but more importantly, it teaches. Check the [docs/](./docs/) folder for our learnings, mistakes, and solutions.
+> Ask Copilot *"Who on my team speaks French and has an MBA?"* — and get silence. Copilot cannot answer questions about people it knows nothing about. This tool fixes that.
 
-**TL;DR**: Define your users in a CSV → Run one command → Users created in Microsoft 365 with licenses assigned and profiles enriched.
+**The problem is simple**: Microsoft 365 profiles are empty by default. No skills. No education. No languages. No certifications. Copilot sees org chart boxes, not people. Every "find me someone who..." query fails — not because Copilot can't reason, but because there's nothing to reason over.
+
+**This tool bridges the gap.** Define your people in a CSV or JSON file. Run two commands. Copilot can now search across skills, education, languages, patents, publications, and any custom property your organization cares about.
 
 ```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   agents.csv    │  →   │  npm run        │  →   │  Microsoft 365  │
-│   (your data)   │      │  provision      │      │  (users ready)  │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
+Your data (CSV or JSON)
+        |
+        v
+┌──────────────────────────────────────────────────────────┐
+│  Option A: Provision          Option B: Enrich           │
+│  Entra ID accounts    →      Graph Connector with        │
+│  + licenses                  18 people data labels       │
+│  + manager hierarchy         + custom org properties     │
+└──────────────────────────────────────────────────────────┘
+        |
+        v
+Copilot can now answer:
+  "Who has Python skills and speaks German?"
+  "Find someone with a patent in distributed systems"
+  "Who on the Stockholm team has an MBA?"
 ```
+
+> **A Learning Project**: Built to explore Microsoft Graph APIs, OAuth 2.0 flows, and Graph Connectors. Everything we learned — including the mistakes — is in [docs/](./docs/).
 
 ---
 
-## Quick Demo: From CSV to M365 Users
+## Two Minutes to Working Profiles
 
-### The Smallest CSV (4 columns)
+### 1. The simplest case: a CSV
 
-This is all you need to create users:
+Four columns. That's the minimum:
 
 ```csv
 name,email,role,department
-Sarah Chen,sarah.chen@yourdomain.onmicrosoft.com,CEO,Executive
-Michael Rodriguez,michael.rodriguez@yourdomain.onmicrosoft.com,CTO,Engineering
-Emma Wilson,emma.wilson@yourdomain.onmicrosoft.com,Developer,Engineering
+Sarah Chen,sarah@yourdomain.onmicrosoft.com,CEO,Executive
+Michael Rodriguez,michael@yourdomain.onmicrosoft.com,CTO,Engineering
 ```
 
-Run it:
 ```bash
 npm run provision -- --csv config/my-team.csv
 ```
 
-Result: 3 users created with M365 licenses, ready to use Outlook, Teams, and Office apps.
+Users created. Licenses assigned. Done.
 
----
+### 2. Add enrichment data
 
-### The Full CSV (30+ columns with custom properties)
-
-When you need the complete employee profile with enrichment data:
+Add columns. The tool routes each one automatically:
 
 ```csv
-name,email,role,department,givenName,surname,jobTitle,employeeType,companyName,officeLocation,streetAddress,city,state,country,postalCode,usageLocation,preferredLanguage,mobilePhone,businessPhones,employeeId,employeeHireDate,ManagerEmail,VTeam,BenefitPlan,CostCenter,BuildingAccess,ProjectCode
-Ingrid Johansen,ingrid.johansen@domain.onmicrosoft.com,CEO,Executive,Ingrid,Johansen,Chief Executive Officer,Employee,Nordic Solutions AS,Oslo HQ,Drammensveien 134,Oslo,Oslo,Norway,0277,NO,nb-NO,+47 915 12 345,"['+47 22 12 34 56']",EMP001,2015-03-15,,Executive Leadership,Executive Plus,CEO-OFFICE,Level-5,EXEC-001
-Lars Hansen,lars.hansen@domain.onmicrosoft.com,CTO,Engineering,Lars,Hansen,Chief Technology Officer,Employee,Nordic Solutions AS,Oslo HQ,Drammensveien 134,Oslo,Oslo,Norway,0277,NO,nb-NO,+47 918 45 678,"['+47 22 12 34 57']",EMP002,2016-06-01,ingrid.johansen@domain.onmicrosoft.com,Executive Leadership,Executive Plus,ENG-DEPT,Level-5,ENG-000
+name,email,role,department,skills,languages,aboutMe,certifications,VTeam
+Sarah Chen,sarah@domain.com,CEO,Executive,"['Leadership','Strategy']","['English (Native)']",20 years in tech,['PMP'],Executive
 ```
-
-**Note**: Option B ingests all 13 official people data labels plus any custom CSV columns (like `VTeam`, `BenefitPlan`, `CostCenter`) as searchable connector properties.
-
-Run both provisioning + enrichment:
-```bash
-npm run provision -- --csv config/full-team.csv
-npm run option-b:setup -- --csv config/full-team.csv --connection-id m365people24
-```
-
----
-
-## How Data Flows: CSV → Microsoft 365 Profiles
-
-Every CSV column is automatically routed to the right destination:
-
-```
-CSV Column                    → Destination              → Copilot Searchable?
-─────────────────────────────────────────────────────────────────────────────
-Standard Props (name, email,  → Option A: Entra ID       → Via composite labels
- jobTitle, city, phone, etc.)    (direct user properties)
-
-Profile API (languages,       → Option A: Profile API    → No (no labels)
- interests)                      (/profile/languages)
-
-Labeled Props (skills,        → Option B: Connector      → Yes (people data labels)
- aboutMe, certifications,       (Path A deserialization)
- projects, awards, etc.)
-
-Custom Props (VTeam,          → Option B: Connector      → Yes (searchable, appear
- BenefitPlan, CostCenter,       (Path B deserialization)    as "CustomPropertiesFrom
- any non-standard column)                                    Connector" note)
-```
-
-### How Custom Properties Are Detected
-
-The tool reads your CSV header and compares each column against:
-1. The [standard property schema](./src/schema/user-property-schema.ts) (50+ known Microsoft Graph properties)
-2. Internal columns (`name`, `email`, `role`, `ManagerEmail`)
-
-Any column that doesn't match either list becomes a **custom connector property** automatically. For example, if your CSV has:
-
-```csv
-name,email,department,skills,VTeam,CostCenter,ProjectCode
-```
-
-Then `VTeam`, `CostCenter`, and `ProjectCode` are auto-detected as custom properties and added to the connector schema.
-
-### Schema Immutability
-
-Microsoft Graph Connector schemas **cannot be updated** after registration. This means:
-- The 13 official people data labels are **always** included (hardcoded)
-- Custom properties are detected from your CSV **at setup time**
-- If you later add new custom columns to your CSV, you must delete the old connector and create a new one:
 
 ```bash
-npm run enrich:delete-connector -- --connection-id m365people24
-npm run option-b:setup -- --csv config/updated.csv --connection-id m365people25
+npm run provision -- --csv config/team.csv
+npm run option-b:setup -- --csv config/team.csv --connection-id m365people25
 ```
 
-Re-ingestion (`npm run option-b:ingest`) works without recreating the connector — it updates existing items with new values for the same schema.
+Now Copilot knows Sarah has leadership skills and a PMP certification. Ask it.
+
+### 3. Rich profiles with JSON
+
+CSV works for simple data. JSON unlocks the full depth of Microsoft's profile schema — education with institutions and programs, languages with proficiency levels, patents with filing details:
+
+```json
+[
+  {
+    "email": "sarah@domain.com",
+    "name": "Sarah Chen",
+    "role": "CEO",
+    "department": "Executive",
+    "skills": ["Leadership", "Strategy"],
+    "educationalActivities": [
+      {
+        "institution": {
+          "displayName": "Stanford University",
+          "location": { "city": "Stanford", "countryOrRegion": "US" }
+        },
+        "program": {
+          "displayName": "MBA",
+          "abbreviation": "MBA",
+          "fieldsOfStudy": ["Strategy", "Finance"]
+        },
+        "startMonthYear": "2010-09",
+        "completionMonthYear": "2012-06"
+      }
+    ],
+    "languages": [
+      { "displayName": "English", "tag": "en-US", "spoken": "nativeOrBilingual", "written": "nativeOrBilingual", "reading": "nativeOrBilingual" },
+      { "displayName": "Mandarin", "tag": "zh-CN", "spoken": "fullProfessional", "written": "professionalWorking", "reading": "fullProfessional" }
+    ],
+    "patents": [
+      {
+        "displayName": "Real-Time Content Optimization",
+        "number": "US-10234567-B2",
+        "isPending": false,
+        "issuingAuthority": "United States Patent and Trademark Office"
+      }
+    ],
+    "VTeam": "Executive"
+  }
+]
+```
+
+```bash
+npm run provision -- --json config/team.json
+npm run option-b:setup -- --json config/team.json --connection-id m365people25
+```
+
+**CSV and JSON are not exclusive.** Use both — JSON overrides CSV per-property when you provide both:
+
+```bash
+npm run option-b:setup -- --csv config/team.csv --json config/rich-profiles.json --connection-id m365people25
+```
+
+CSV gives the baseline. JSON adds depth where you have it. No property is forced to be rich — a plain string like `"Leadership"` works identically to a full object with `collaborationTags` and `categories`.
 
 ---
 
-## What This Tool Does
+## How Data Flows
 
-| Feature | What Happens |
-|---------|--------------|
-| **User Creation** | Creates Entra ID accounts from CSV |
-| **Multi-License Assignment** | Assigns multiple M365 licenses (E5 + Copilot, etc.) |
-| **Manager Hierarchy** | Sets up reporting structure via `ManagerEmail` column |
-| **Profile Enrichment** | All 13 people data labels: skills, aboutMe, certifications, awards, projects, name, position, addresses, emails, phones, and more |
-| **Custom Properties** | Extra CSV columns auto-detected and added as searchable connector properties |
-| **State Management** | Detects CREATE/UPDATE/NOOP - won't duplicate users |
-| **Tenant Reset** | Safely delete all users except protected admin accounts |
+Every field is automatically routed to where it belongs:
+
+```
+Your Data                       Destination                  Copilot Searchable?
+────────────────────────────────────────────────────────────────────────────────
+Entra ID fields (name, email,   Option A → Entra ID          Via composite labels
+ jobTitle, city, phone, etc.)
+
+Profile fields (skills, certs,  Option B → Graph Connector   Yes (people data labels)
+ education, languages, patents,   (18 official labels)
+ interests, aboutMe, awards...)
+
+Custom org fields (VTeam,       Option B → Graph Connector   Yes (searchable custom
+ CostCenter, any unknown col)     (auto-detected)              properties)
+```
+
+### The 18 People Data Labels
+
+Graph Connectors with people data labels are what make Copilot searchable. Without labels, Copilot cannot find your people by their attributes. This tool enables all 18:
+
+| Group | Labels | What They Carry |
+|-------|--------|-----------------|
+| **Core profile** | personSkills, personNote, personCertifications, personProjects, personAwards, personAnniversaries, personWebSite | Skills, about me, certifications, projects, awards, birthday, personal site |
+| **Identity** | personName, personCurrentPosition, personAddresses, personEmails, personPhones, personWebAccounts | Composite fields from Entra ID data |
+| **Rich entities** | personInterests, personEducationalActivities, personLanguages, personPublications, personPatents | Full Microsoft Graph entity schemas with nested fields |
+
+**Rich entities** accept both simple and complex input:
+- CSV: `"MIT"` becomes `{"institution":{"displayName":"MIT"}}`
+- JSON: Full `educationalActivity` with institution location, program details, and dates
+
+### Custom Properties
+
+Any column not in the [standard schema](./src/schema/user-property-schema.ts) becomes a searchable custom property automatically. If your CSV has `VTeam`, `CostCenter`, `BuildingAccess` — those become part of the connector schema at setup time.
+
+**Schema limitation**: Connector schemas cannot be updated after registration. To add new columns, delete the old connector and create a new one with a new ID.
 
 ---
 
-## Setup (One-Time)
+## Setup
 
 ### 1. Azure AD App Registration
 
-Create an app in [Azure Portal](https://portal.azure.com) → Azure Active Directory → App registrations.
+Create an app in [Azure Portal](https://portal.azure.com) > Entra ID > App registrations.
 
-**Required API Permissions:**
-
-![API Permissions](./docs/images/api-permissions.png)
+**Required permissions:**
 
 | Permission | Type | Purpose |
 |------------|------|---------|
@@ -137,13 +175,11 @@ Create an app in [Azure Portal](https://portal.azure.com) → Azure Active Direc
 | `Directory.ReadWrite.All` | Delegated | Manage directory objects |
 | `Organization.Read.All` | Delegated | Read tenant info |
 | `offline_access` | Delegated | Keep tokens refreshed |
-| `openid` | Delegated | Sign users in |
-| `profile` | Delegated | Read user profiles |
-| `ExternalConnection.ReadWrite.OwnedBy` | **Application** | Graph Connector (enrichment) |
-| `ExternalItem.ReadWrite.OwnedBy` | **Application** | Graph Connector items |
-| `PeopleSettings.ReadWrite.All` | **Application** | Profile source registration |
+| `ExternalConnection.ReadWrite.OwnedBy` | Application | Graph Connector |
+| `ExternalItem.ReadWrite.OwnedBy` | Application | Connector items |
+| `PeopleSettings.ReadWrite.All` | Application | Profile source registration |
 
-> **Important**: Click "Grant admin consent" after adding permissions!
+Grant admin consent after adding permissions.
 
 ### 2. Configure Environment
 
@@ -151,270 +187,119 @@ Create an app in [Azure Portal](https://portal.azure.com) → Azure Active Direc
 cp .env.example .env
 ```
 
-Edit `.env`:
 ```bash
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
-AZURE_CLIENT_SECRET=your-client-secret  # For profile enrichment
+AZURE_CLIENT_SECRET=your-client-secret
 USER_DOMAIN=yourdomain.onmicrosoft.com
-
-# Single license
-LICENSE_SKU_IDS=05e9a617-0261-4cee-bb44-138d3ef5d965
-
-# Multiple licenses (comma-separated) - e.g., E5 + Copilot
-# LICENSE_SKU_IDS=e23e2b65-8fc9-4036-a902-a17473ff6d26,639dec6b-bb19-468b-871c-c5c441c4b0cb
+LICENSE_SKU_IDS=sku-id-1,sku-id-2
 ```
-
-Run `npm run list-licenses` to see available licenses in your tenant.
 
 ### 3. Install & Build
 
 ```bash
-npm install
-npm run build
+npm install && npm run build
 ```
 
 ---
 
-## Usage
+## Commands
 
-### Basic: Create Users
+### Provisioning
 
 ```bash
-# Preview what will be created (dry run)
-npm run provision -- --dry-run --csv config/textcraft-europe.csv
-
-# Actually create users
-npm run provision -- --csv config/textcraft-europe.csv
+npm run provision -- --csv config/team.csv           # Create users from CSV
+npm run provision -- --json config/team.json         # Create users from JSON
+npm run provision -- --dry-run --csv config/team.csv  # Preview changes
 ```
 
-### Advanced: Enrich Profiles with People Data
+### Enrichment (Graph Connector)
 
-Option A (provision) must run first so Entra ID users exist before connector ingestion.
-
-**Option A — Profile API** (languages, interests — no Copilot searchability):
 ```bash
-npm run option-a:enrich -- --csv config/textcraft-europe.csv
+# First time: create connection + schema + ingest
+npm run option-b:setup -- --csv config/team.csv --connection-id m365people25
+
+# With JSON (rich entity data)
+npm run option-b:setup -- --json config/team.json --connection-id m365people25
+
+# Merge mode: CSV base + JSON enrichment
+npm run option-b:setup -- --csv config/team.csv --json config/rich.json --connection-id m365people25
+
+# Re-ingest (connection exists)
+npm run option-b:ingest -- --csv config/team.csv --connection-id m365people25
+
+# Preview without changes
+npm run option-b:dry-run -- --json config/team.json --connection-id m365people25
 ```
 
-**Option B — Graph Connector** (skills, certifications, awards, custom properties — Copilot-searchable):
-```bash
-# First time: creates connection + schema + ingests items
-npm run option-b:setup -- --csv config/textcraft-europe.csv --connection-id m365people24
+### Tenant Management
 
-# Re-ingest only (connection already exists)
-npm run option-b:ingest -- --csv config/textcraft-europe.csv --connection-id m365people24
+```bash
+npm run list-users                      # List all users
+npm run list-licenses                   # Show available licenses
+npm run update-licenses                 # Add missing licenses
+npm run reset-tenant                    # Preview cleanup (dry run)
+npm run reset-tenant:confirm            # Delete all non-admin users
 ```
 
-The connector schema includes all 13 official people data labels plus any custom CSV columns (auto-detected). Schema cannot be updated — to add new CSV columns, delete the old connector and create a new one with a new ID.
-
-### Monitor Ingestion Progress
-
-Use the verification script to compare CSV totals with Microsoft Search indexing and confirm a sample item:
+### Verification
 
 ```bash
-npm run build
 node tools/debug/verify-ingestion-progress.mjs \
   --search-auth delegated \
-  --connection-id m365people \
-  --csv config/textcraft-europe.csv \
+  --connection-id m365people25 \
+  --csv config/team.csv \
   --query "*"
 ```
 
-Notes:
-- externalItem search requires delegated auth (default scope: `ExternalItem.Read.All`).
-- Use `--search-auth token` with `--search-token` to skip browser login.
-- `--region` is only used for app-only search (delegated ignores it).
-- Indexing can take 6+ hours before Microsoft Search/Copilot reflects updates.
-
-### Tenant Reset: Start Fresh
-
-Need to clean up and start over? The reset script safely removes all provisioned users while protecting admin accounts.
-
-```bash
-# Preview what will be deleted (safe - no changes made)
-npm run reset-tenant
-
-# Actually delete users (requires confirmation flag)
-npm run reset-tenant:confirm
-```
-
-**Protected accounts are NEVER deleted:**
-- Email patterns: `admin@*`, `administrator@*`, `root@*`, `systemadmin@*`
-- Azure AD roles: Global Administrator, Security Administrator, User Administrator
-- Custom exclusions configured in `.env`
-
-**Typical workflow for fresh provisioning:**
-```bash
-npm run reset-tenant           # 1. Preview what will be deleted
-npm run reset-tenant:confirm   # 2. Delete all non-admin users
-npm run provision -- --csv config/new-users.csv  # 3. Provision new users
-```
-
----
-
-## CSV Column Reference
-
-### Standard User Properties (Option A)
-
-| Column | Required | Example | Maps To |
-|--------|----------|---------|---------|
-| `name` | ✅ | Sarah Chen | displayName |
-| `email` | ✅ | sarah@domain.com | userPrincipalName |
-| `role` | ✅ | CEO | (internal use) |
-| `department` | ✅ | Executive | department |
-| `givenName` | | Sarah | givenName |
-| `surname` | | Chen | surname |
-| `jobTitle` | | Chief Executive Officer | jobTitle |
-| `employeeType` | | Employee | employeeType |
-| `companyName` | | Contoso Ltd | companyName |
-| `officeLocation` | | Building 1 | officeLocation |
-| `city` | | Oslo | city |
-| `country` | | Norway | country |
-| `mobilePhone` | | +47 900 12 345 | mobilePhone |
-| `ManagerEmail` | | boss@domain.com | manager (relationship) |
-
-### Enrichment Properties (Option B - Graph Connector)
-
-These use Microsoft people data labels and are Copilot-searchable:
-
-| Column | Example | People data label |
-|--------|---------|------------------|
-| `skills` | "['TypeScript','Azure']" | `personSkills` |
-| `aboutMe` | "10 years experience..." | `personNote` |
-| `projects` | "['Migration']" | `personProjects` |
-| `certifications` | "['PMP']" | `personCertifications` |
-| `awards` | "['MVP']" | `personAwards` |
-| `mySite` | "https://intranet/" | `personWebSite` |
-| `birthday` | "2000-01-01" | `personAnniversaries` |
-
-Languages/interests have no connector labels and are not ingested via the connector.
-
-### Custom Properties (Auto-Detected from CSV)
-
-Any CSV column that isn't a standard Microsoft Graph property or an internal column (`name`, `email`, `role`, `ManagerEmail`) is automatically treated as a **custom connector property**:
-
-```csv
-name,email,role,department,VTeam,CostCenter,BuildingAccess,WritingStyle,Specialization
-Sarah Chen,sarah@domain.com,CEO,Executive,Leadership,C-SUITE,Level-5,Strategic,Leadership
-```
-
-`VTeam`, `CostCenter`, `BuildingAccess`, `WritingStyle`, `Specialization` → Automatically added to the connector schema as searchable custom properties. They appear in profile cards as notes with `displayName: "CustomPropertiesFromConnector"`.
-
-**How it works**: The schema builder reads your CSV columns and calls `getCustomProperties(csvColumns)` to detect any column not in the [standard schema](./src/schema/user-property-schema.ts). These are registered as `string` type properties (no people data label).
-
-**Schema limitation**: Microsoft Graph Connector schemas **cannot be updated** once registered. If you add new custom columns to your CSV, you must delete the old connector and create a new one:
-
-```bash
-# Delete old connector
-npm run enrich:delete-connector -- --connection-id m365people23
-
-# Create new connector with updated schema
-npm run option-b:setup -- --csv config/updated-team.csv --connection-id m365people24
-```
-
-The 13 official people data labels (skills, certifications, awards, etc.) are always included regardless of CSV columns. Only custom properties are dynamic.
-
----
-
-## Output
-
-After provisioning, check `output/`:
-
-```
-output/
-├── agents-config.json    # User IDs, passwords, all details
-├── provisioning-report.md # Human-readable summary
-└── passwords.txt          # Generated passwords (KEEP SECURE!)
-```
+Indexing takes 6+ hours. Profile data propagation takes 1-24 hours.
 
 ---
 
 ## Project Structure
 
 ```
-├── src/                    # TypeScript source
-│   ├── provision.ts        # User provisioning (Option A)
-│   ├── enrich-profiles.ts  # Profile enrichment (Option B)
-│   ├── reset-tenant.ts     # Tenant reset with account protection
-│   ├── graph-client.ts     # Microsoft Graph API client
-│   ├── safety/             # Account protection modules
-│   └── people-connector/   # Graph Connector modules
-├── config/                 # Your CSV files go here
-├── docs/                   # Deep-dive documentation
-├── tools/                  # Debug & admin utilities
-└── output/                 # Generated files (gitignored)
+src/
+  provision.ts                 # Option A — create Entra ID users
+  enrich-connector.ts          # Option B — Graph Connector pipeline
+  json-loader.ts               # Shared JSON input loader (both options)
+  people-connector/
+    connection-manager.ts      # Connection + profile source registration
+    schema-builder.ts          # Schema with 18 labels + custom properties
+    item-ingester.ts           # Entity serialization + ingestion
+  schema/
+    user-property-schema.ts    # Property routing (Option A vs B)
+config/
+  textcraft-europe.csv         # 95-person sample (CSV, displayName-only)
+  textcraft-europe.json        # 95-person sample (JSON, rich entities)
+  sample-rich.json             # 2-person sample with full PCP entity depth
+docs/                          # Architecture, auth, state management, lessons
+tools/                         # Debug and admin utilities
 ```
 
 ---
 
-## Learnings & Documentation
+## What We Learned
 
-This is a **learning project**. We documented everything we discovered:
+This is a learning project. We documented everything:
 
 | Document | What You'll Learn |
 |----------|-------------------|
-| [docs/ARCHITECTURE-OPTION-A-B.md](./docs/ARCHITECTURE-OPTION-A-B.md) | Why we split into two options |
-| [docs/PEOPLE-DATA-AUTH-SOLUTION.md](./docs/PEOPLE-DATA-AUTH-SOLUTION.md) | Why Graph Connectors need Application permissions (we learned this the hard way) |
-| [docs/STATE-MANAGEMENT.md](./docs/STATE-MANAGEMENT.md) | How we detect CREATE vs UPDATE vs NOOP |
-| [docs/SETUP.md](./docs/SETUP.md) | Detailed Azure AD setup guide |
-| [docs/USAGE.md](./docs/USAGE.md) | Complete usage reference |
+| [ARCHITECTURE-OPTION-A-B.md](./docs/ARCHITECTURE-OPTION-A-B.md) | Why Entra ID and profile enrichment are separate pipelines |
+| [COPILOT-CONNECTORS-PEOPLE-DATA.md](./docs/COPILOT-CONNECTORS-PEOPLE-DATA.md) | End-to-end flow for making people data Copilot-searchable |
+| [graph-connector-lessons.md](./docs/graph-connector-lessons.md) | 10 iterations of connector failures and what each taught us |
+| [PEOPLE-DATA-AUTH-SOLUTION.md](./docs/PEOPLE-DATA-AUTH-SOLUTION.md) | Why Graph Connectors require Application permissions |
+| [STATE-MANAGEMENT.md](./docs/STATE-MANAGEMENT.md) | Idempotent provisioning: CREATE, UPDATE, NOOP detection |
 
-**Key Learnings:**
+**Hard-won lessons:**
 
-1. **Delegated vs Application permissions matter** - Graph Connectors only work with Client Credentials Flow
-2. **Profile source registration is critical** - Without it, data won't appear in `/me/profile` API or profile cards
-3. **Profile prioritization requires beta API** - Use `PATCH /admin/people/profilePropertySettings/{id}` (not the collection endpoint)
-4. **Schema provisioning is slow** - Wait 10+ minutes after creating a connection
-5. **Schema cannot be updated** - Once registered, you must delete and recreate the connection to change schema
-6. **Items aren't instantly searchable** - Expect 6+ hours for Microsoft Search/Copilot indexing
-7. **Profile data propagation takes time** - Allow 1-24 hours for data to appear in profile API
-8. **State management prevents duplicates** - CSV is idempotent; run it as many times as you want
-
----
-
-## Commands Reference
-
-```bash
-# Provisioning
-npm run provision                      # Create users from CSV
-npm run provision -- --dry-run         # Preview only (no changes)
-npm run provision -- --csv config/myfile.csv  # Use specific CSV
-
-# License Management
-npm run list-licenses                  # Show available licenses
-npm run update-licenses                # Add missing licenses to users
-npm run update-licenses -- --csv config/myfile.csv  # Update licenses for specific CSV
-npm run update-licenses -- --dry-run   # Preview license changes
-
-# Tenant Management
-npm run reset-tenant                   # Preview users to delete (dry run)
-npm run reset-tenant:confirm           # Actually delete all non-admin users
-npm run list-users                     # List all users in tenant
-
-# Option A: Profile API Enrichment (languages, interests)
-npm run option-a:enrich                # Enrich via Profile API
-npm run option-a:enrich:dry-run        # Preview Profile API enrichment
-
-# Option B: Graph Connector (skills, certs, awards, custom props — Copilot-searchable)
-npm run option-b:setup                 # Create connection + schema + ingest
-npm run option-b:ingest                # Re-ingest items (connection must exist)
-npm run option-b:dry-run               # Preview connector enrichment
-npm run enrich:delete-connector        # Delete connector connection
-
-# Ingestion Verification
-node tools/debug/verify-ingestion-progress.mjs --search-auth delegated --connection-id m365people --csv config/textcraft-europe.csv --query "*"
-
-# Debug & Diagnostics
-npm run debug:checklist -- --tenant-id <TENANT_ID> --connection-id <CONNECTION_ID>
-
-# Utilities
-npm run logout                         # Clear cached auth tokens
-npm run test-connection                # Verify Graph API access
-npm run build                          # Compile TypeScript
-```
-
-Debug workflow references: [docs/DEBUG-PLAYBOOK.md](docs/DEBUG-PLAYBOOK.md) and [debug/README.md](debug/README.md)
+1. **Graph Connectors need Application auth** — Delegated tokens don't work for external items
+2. **Profile source registration must happen before ingestion** — Otherwise data never appears on profile cards
+3. **Schema is immutable** — Once registered, delete and recreate to change it
+4. **Path A vs Path B deserialization** — Labeled properties accept any JSON type; unlabeled properties accept strings only
+5. **PCP expects arrays where Graph docs say String** — `fieldsOfStudy`, `activities`, `awards` must be sent as arrays for downstream propagation
+6. **Indexing is not instant** — Allow 6-24 hours before Copilot reflects new data
+7. **Never refactor working connector code** — Even "harmless" changes correlated with ingestion failures
 
 ---
 
@@ -426,4 +311,4 @@ MIT
 
 ## Contributing
 
-This is a learning project! Found something interesting? Learned something new? Open a PR to share your findings.
+Found something interesting? Learned something new about Graph Connectors or Copilot people data? Open a PR.

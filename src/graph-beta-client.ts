@@ -1,4 +1,6 @@
 import { GraphClient, GraphClientConfig } from './graph-client.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 /**
  * Microsoft Graph BETA Client
@@ -318,7 +320,8 @@ export async function main() {
 }
 
 // Run CLI if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+const __filename_beta = fileURLToPath(import.meta.url);
+if (__filename_beta === path.resolve(process.argv[1])) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
