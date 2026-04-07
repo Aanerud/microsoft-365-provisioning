@@ -252,6 +252,10 @@ npm run option-b:dry-run -- --csv config/users.csv --json config/rich.json  # Me
 CSV provides simple `displayName`-only data. JSON provides full PCP entity schemas.
 When both are provided, JSON overrides CSV per-property.
 
+**PascalCase auto-detection**: JSON files using PascalCase keys (e.g. `DisplayName`, `MailNickName`, `Skills`) are auto-detected and normalized to camelCase. This matches the Microsoft Graph Profile API schema and is the recommended format for data science team output.
+
+**Per-user licenses**: JSON records with a `Licenses` array (display names like `"Office 365 E5 (no Teams)"`) are auto-resolved to SKU IDs by querying the tenant. Falls back to `LICENSE_SKU_IDS` from `.env` if no `Licenses` field.
+
 ### Utilities
 ```bash
 npm run logout              # Clear cached tokens
@@ -268,7 +272,8 @@ M365-Agent-Provisioning/
 │   ├── provision.ts              # Option A - User provisioning
 │   ├── enrich-profiles.ts        # Option A - Profile API enrichment (languages, interests)
 │   ├── enrich-connector.ts       # Option B - Graph Connector pipeline (skills, aboutMe, etc.)
-│   ├── json-loader.ts            # Shared JSON input loader (both Options)
+│   ├── json-loader.ts            # Shared JSON loader + PascalCase normalizer
+│   ├── license-resolver.ts       # License display name → SKU ID resolver
 │   ├── profile-writer.ts         # Profile API writer class
 │   ├── graph-client.ts           # Microsoft Graph client
 │   ├── oid-cache.ts              # OID cache (UPN → object ID mapping)
@@ -284,7 +289,7 @@ M365-Agent-Provisioning/
 ├── config/
 │   ├── textcraft-europe.csv      # Sample data (CSV)
 │   ├── profile-data.json         # Rich profile data (Profile API format, 95 records)
-│   └── sample-rich.json          # Sample rich JSON input (flat format, 2 records)
+│   └── sample-rich.json          # Sample rich JSON input (PascalCase, 2 records)
 ├── tools/
 │   ├── debug/                    # Debug scripts
 │   └── admin/                    # Admin utilities
@@ -298,7 +303,8 @@ M365-Agent-Provisioning/
 | `src/provision.ts` | User provisioning (Option A) |
 | `src/enrich-profiles.ts` | Profile API enrichment - languages, interests (Option A) |
 | `src/enrich-connector.ts` | Graph Connector pipeline - skills, aboutMe, etc. (Option B) |
-| `src/json-loader.ts` | Shared JSON input loader + validator (both Options) |
+| `src/json-loader.ts` | Shared JSON loader + PascalCase normalizer (both Options) |
+| `src/license-resolver.ts` | License display name → SKU ID resolver |
 | `src/profile-writer.ts` | Profile API writer (languages, interests, etc.) |
 | `src/oid-cache.ts` | OID cache (UPN → object ID mapping) |
 | `src/people-connector/connection-manager.ts` | Graph Connector connection + profile source registration |

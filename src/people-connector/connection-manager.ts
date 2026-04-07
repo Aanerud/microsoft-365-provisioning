@@ -44,8 +44,7 @@ export class PeopleConnectionManager {
       description,
       // REQUIRED for people data connectors
       contentCategory: 'people',
-      // Enable Copilot Chat and Search Results visibility
-      enabledContentExperiences: ['search'],
+      // NOTE: enabledContentExperiences cannot be set on POST — applied via enableSearchExperience() after creation
       activitySettings: {
         urlToItemResolvers: []
       }

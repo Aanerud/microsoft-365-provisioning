@@ -64,60 +64,83 @@ Now Copilot knows Sarah has leadership skills and a PMP certification. Ask it.
 
 ### 3. Rich profiles with JSON
 
-CSV works for simple data. JSON unlocks the full depth of Microsoft's profile schema — education with institutions and programs, languages with proficiency levels, patents with filing details:
+CSV works for simple data. JSON unlocks the full depth of Microsoft's profile schema — education with institutions and programs, languages with proficiency levels, patents with filing details, and per-user license assignment.
+
+The JSON format uses PascalCase keys (matching the Microsoft Graph Profile API schema). The tool auto-detects PascalCase and normalizes it internally:
 
 ```json
 [
   {
-    "email": "sarah@domain.com",
-    "name": "Sarah Chen",
-    "role": "CEO",
-    "department": "Executive",
-    "skills": ["Leadership", "Strategy"],
-    "educationalActivities": [
+    "MailNickName": "sarah.chen",
+    "DisplayName": "Sarah Chen",
+    "FirstName": "Sarah",
+    "LastName": "Chen",
+    "JobTitle": "CEO",
+    "Department": "Executive",
+    "CompanyName": "Contoso",
+    "Manager": null,
+    "UsageLocation": "NO",
+    "Address": {
+      "City": "Oslo",
+      "Country": "Norway",
+      "CountryOrRegion": "Norway"
+    },
+    "Licenses": [
+      "Office 365 E5 (no Teams)",
+      "Microsoft Teams Enterprise",
+      "Microsoft 365 Copilot"
+    ],
+    "Skills": [
       {
-        "institution": {
-          "displayName": "Stanford University",
-          "location": { "city": "Stanford", "countryOrRegion": "US" }
-        },
-        "program": {
-          "displayName": "MBA",
-          "abbreviation": "MBA",
-          "fieldsOfStudy": ["Strategy", "Finance"]
-        },
-        "startMonthYear": "2010-09",
-        "completionMonthYear": "2012-06"
+        "DisplayName": "Strategic Planning",
+        "Categories": ["Business & Strategy"],
+        "CollaborationTags": ["askMeAbout", "ableToMentor"],
+        "Proficiency": "fullProfessional"
       }
     ],
-    "languages": [
-      { "displayName": "English", "tag": "en-US", "spoken": "nativeOrBilingual", "written": "nativeOrBilingual", "reading": "nativeOrBilingual" },
-      { "displayName": "Mandarin", "tag": "zh-CN", "spoken": "fullProfessional", "written": "professionalWorking", "reading": "fullProfessional" }
-    ],
-    "patents": [
+    "EducationalActivities": [
       {
-        "displayName": "Real-Time Content Optimization",
-        "number": "US-10234567-B2",
-        "isPending": false,
-        "issuingAuthority": "United States Patent and Trademark Office"
+        "Institution": {
+          "DisplayName": "Stanford University",
+          "Location": { "City": "Stanford", "CountryOrRegion": "US" }
+        },
+        "Program": {
+          "DisplayName": "MBA",
+          "Abbreviation": "MBA",
+          "FieldsOfStudy": "Strategy, Finance"
+        },
+        "StartMonthYear": "2010-09-01",
+        "EndMonthYear": "2012-06-30"
       }
     ],
-    "VTeam": "Executive"
+    "Languages": [
+      { "DisplayName": "English", "Tag": "en-US", "Spoken": "nativeOrBilingual", "Written": "nativeOrBilingual", "Reading": "nativeOrBilingual" }
+    ],
+    "TerritoryTier1": "Microsoft",
+    "TerritoryTier2": "EMEA"
   }
 ]
 ```
 
 ```bash
 npm run provision -- --json config/team.json
-npm run option-b:setup -- --json config/team.json --connection-id m365people25
+npm run option-b:setup -- --json config/team.json --connection-id m365people01
 ```
+
+**Key features of JSON input:**
+- `MailNickName` + `USER_DOMAIN` from `.env` constructs the full email (no hardcoded domains)
+- `Licenses` array assigns per-user licenses by display name (resolved to SKU IDs automatically)
+- `Manager` references other users by `MailNickName`
+- Rich profile entities match the Microsoft Graph Profile API schema
+- Custom org fields (`TerritoryTier1`, `Products`, etc.) become searchable connector properties
 
 **CSV and JSON are not exclusive.** Use both — JSON overrides CSV per-property when you provide both:
 
 ```bash
-npm run option-b:setup -- --csv config/team.csv --json config/rich-profiles.json --connection-id m365people25
+npm run option-b:setup -- --csv config/team.csv --json config/rich-profiles.json --connection-id m365people01
 ```
 
-CSV gives the baseline. JSON adds depth where you have it. No property is forced to be rich — a plain string like `"Leadership"` works identically to a full object with `collaborationTags` and `categories`.
+No property is forced to be rich — a plain string like `"Leadership"` works identically to a full object with `CollaborationTags` and `Categories`.
 
 ---
 
@@ -167,19 +190,28 @@ Any column not in the [standard schema](./src/schema/user-property-schema.ts) be
 
 Create an app in [Azure Portal](https://portal.azure.com) > Entra ID > App registrations.
 
+**Platform configuration:**
+- Add a **Single-page application (SPA)** redirect URI: `http://localhost:5544`
+- This is the local auth server that handles the browser-based login flow for Option A
+
 **Required permissions:**
 
-| Permission | Type | Purpose |
-|------------|------|---------|
-| `User.ReadWrite.All` | Delegated | Create and update users |
-| `Directory.ReadWrite.All` | Delegated | Manage directory objects |
-| `Organization.Read.All` | Delegated | Read tenant info |
-| `offline_access` | Delegated | Keep tokens refreshed |
-| `ExternalConnection.ReadWrite.OwnedBy` | Application | Graph Connector |
-| `ExternalItem.ReadWrite.OwnedBy` | Application | Connector items |
-| `PeopleSettings.ReadWrite.All` | Application | Profile source registration |
+| Permission | Type | Used by | Purpose |
+|------------|------|---------|---------|
+| `User.ReadWrite.All` | Delegated | Option A | Create and update users |
+| `Directory.ReadWrite.All` | Delegated | Option A | Manage directory objects |
+| `People.Read.All` | Delegated | Option A | Read profile data for enrichment |
+| `Organization.Read.All` | Delegated | Option A | Read tenant info |
+| `offline_access` | Delegated | Option A | Keep tokens refreshed |
+| `ExternalConnection.ReadWrite.OwnedBy` | Application | Option B | Create/manage Graph Connector connections |
+| `ExternalItem.ReadWrite.OwnedBy` | Application | Option B | Ingest items into connections |
+| `PeopleSettings.ReadWrite.All` | Application | Option B | Register profile source + priority settings |
 
-Grant admin consent after adding permissions.
+Grant admin consent after adding all permissions.
+
+**Two auth flows, one app registration:**
+- **Option A** (provisioning) uses delegated auth — opens a browser to `http://localhost:5544` for interactive login
+- **Option B** (connector) uses application auth — reads `AZURE_CLIENT_SECRET` from `.env`, no browser needed
 
 ### 2. Configure Environment
 
@@ -192,6 +224,9 @@ AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CLIENT_SECRET=your-client-secret
 USER_DOMAIN=yourdomain.onmicrosoft.com
+
+# Licenses: JSON input uses per-user Licenses array (display names, auto-resolved).
+# LICENSE_SKU_IDS is the fallback for CSV input or JSON without Licenses field.
 LICENSE_SKU_IDS=sku-id-1,sku-id-2
 ```
 
@@ -262,7 +297,8 @@ Indexing takes 6+ hours. Profile data propagation takes 1-24 hours.
 src/
   provision.ts                 # Option A — create Entra ID users
   enrich-connector.ts          # Option B — Graph Connector pipeline
-  json-loader.ts               # Shared JSON input loader (both options)
+  json-loader.ts               # Shared JSON loader + PascalCase normalizer
+  license-resolver.ts          # License display name → SKU ID resolver
   people-connector/
     connection-manager.ts      # Connection + profile source registration
     schema-builder.ts          # Schema with 18 labels + custom properties
@@ -270,9 +306,9 @@ src/
   schema/
     user-property-schema.ts    # Property routing (Option A vs B)
 config/
-  textcraft-europe.csv         # 95-person sample (CSV, displayName-only)
-  textcraft-europe.json        # 95-person sample (JSON, rich entities)
-  sample-rich.json             # 2-person sample with full PCP entity depth
+  textcraft-europe.csv         # 95-person demo (CSV — TextCraft Europe)
+  textcraft-europe.json        # 95-person demo (JSON, camelCase — TextCraft Europe)
+  sample-rich.json             # 2-person sample (PascalCase, full entity depth)
 docs/                          # Architecture, auth, state management, lessons
 tools/                         # Debug and admin utilities
 ```

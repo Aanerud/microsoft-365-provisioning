@@ -16,6 +16,7 @@ import {
   getCustomProperties,
 } from './schema/user-property-schema.js';
 import { loadRowsFromJson } from './json-loader.js';
+import { buildLicenseResolver } from './license-resolver.js';
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ class AgentProvisioner {
   private graphClient: GraphClient;
   private exporter: ConfigExporter;
   private licenseSkuIds: string[];
+  private perUserLicenseResolver: ((userLicenses: string[]) => string[]) | null = null;
 
   constructor(graphClient: GraphClient) {
     this.graphClient = graphClient;
@@ -61,9 +63,9 @@ class AgentProvisioner {
       .filter(id => id.length > 0);
 
     if (this.licenseSkuIds.length === 0) {
-      console.warn('⚠ WARNING: LICENSE_SKU_IDS not set in .env - license assignment will be skipped');
+      console.warn('⚠ WARNING: LICENSE_SKU_IDS not set in .env - will check for per-user licenses in JSON');
     } else {
-      console.log(`📋 Configured ${this.licenseSkuIds.length} license(s) for assignment`);
+      console.log(`📋 Configured ${this.licenseSkuIds.length} license(s) from .env`);
     }
   }
 
@@ -162,9 +164,16 @@ class AgentProvisioner {
       officeLocation: agent.officeLocation,
     });
 
-    // Step 2: Assign licenses
-    if (!options.skipLicenses && this.licenseSkuIds.length > 0) {
-      await this.graphClient.assignLicenses(user.id, this.licenseSkuIds);
+    // Step 2: Assign licenses (per-user from JSON, or global from .env)
+    if (!options.skipLicenses) {
+      let skuIds = this.licenseSkuIds; // default from .env
+      if (this.perUserLicenseResolver && Array.isArray((agent as any).licenses)) {
+        const resolved = this.perUserLicenseResolver((agent as any).licenses);
+        if (resolved.length > 0) skuIds = resolved;
+      }
+      if (skuIds.length > 0) {
+        await this.graphClient.assignLicenses(user.id, skuIds);
+      }
     }
 
     const agentConfig: AgentConfig = {
@@ -208,6 +217,12 @@ class AgentProvisioner {
 
     // Load agent definitions from CSV or JSON
     const agents = await this.loadAgentsFromFile(inputPath);
+
+    // Resolve per-user licenses from JSON (if present)
+    const hasPerUserLicenses = agents.some((a: any) => Array.isArray(a.licenses));
+    if (hasPerUserLicenses && !options.skipLicenses) {
+      this.perUserLicenseResolver = await buildLicenseResolver(this.graphClient, agents);
+    }
 
     // Get column names for custom property detection
     const csvColumns = agents.length > 0 ? Object.keys(agents[0]) : [];
@@ -277,12 +292,23 @@ class AgentProvisioner {
       const { successful, failed } = await this.graphClient.createUsersBatch(usersToCreate);
       createCount = successful.length;
 
-      // Assign licenses
-      if (!options.skipLicenses && this.licenseSkuIds.length > 0) {
-        console.log(`  Assigning ${this.licenseSkuIds.length} license(s) to each user...`);
+      // Assign licenses (per-user from JSON, or global from .env)
+      if (!options.skipLicenses) {
+        const hasAnyLicenses = this.licenseSkuIds.length > 0 || this.perUserLicenseResolver;
+        if (hasAnyLicenses) {
+          console.log(`  Assigning licenses to each user...`);
+        }
         for (const user of successful) {
+          // Find the agent definition to check for per-user licenses
+          const agent = agents.find((a: any) => a.email === user.userPrincipalName);
+          let skuIds = this.licenseSkuIds;
+          if (this.perUserLicenseResolver && agent && Array.isArray((agent as any).licenses)) {
+            const resolved = this.perUserLicenseResolver((agent as any).licenses);
+            if (resolved.length > 0) skuIds = resolved;
+          }
+          if (skuIds.length === 0) continue;
           try {
-            const result = await this.graphClient.assignLicenses(user.id, this.licenseSkuIds);
+            const result = await this.graphClient.assignLicenses(user.id, skuIds);
             if (result.failed.length > 0) {
               for (const failure of result.failed) {
                 logger.warn(`Failed to assign license ${failure.skuId} to ${user.displayName}`, {
