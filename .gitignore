@@ -53,3 +53,7 @@ tools/admin/
 
 # Token cache (stored in home directory, but just in case)
 token-cache.json
+
+# Internal data files (contain real tenant data — never commit)
+config/users.config.json
+config/profile-data.json

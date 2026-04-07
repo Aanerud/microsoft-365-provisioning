@@ -431,9 +431,16 @@ export class ProfileWriter {
    * @param csvValue - Raw CSV value for skills column
    * @returns Array of parsed SkillProficiency objects
    */
-  static parseSkills(csvValue: string): SkillProficiency[] {
-    if (!csvValue || csvValue.trim() === '') {
+  static parseSkills(csvValue: string | any[]): SkillProficiency[] {
+    if (!csvValue || (typeof csvValue === 'string' && csvValue.trim() === '')) {
       return [];
+    }
+
+    // JSON input may provide a native array
+    if (Array.isArray(csvValue)) {
+      return csvValue
+        .filter(s => s)
+        .map(s => typeof s === 'string' ? { displayName: s.trim(), proficiency: 'generalProfessional' as SkillProficiencyLevel, allowedAudiences: 'organization' as const } : { ...s, allowedAudiences: 'organization' as const });
     }
 
     let rawEntries: string[] = [];
@@ -469,9 +476,16 @@ export class ProfileWriter {
    * @param csvValue - Raw CSV value for interests column
    * @returns Array of parsed PersonInterest objects
    */
-  static parseInterests(csvValue: string): PersonInterest[] {
-    if (!csvValue || csvValue.trim() === '') {
+  static parseInterests(csvValue: string | any[]): PersonInterest[] {
+    if (!csvValue || (typeof csvValue === 'string' && csvValue.trim() === '')) {
       return [];
+    }
+
+    // JSON input may provide a native array
+    if (Array.isArray(csvValue)) {
+      return csvValue
+        .filter(s => s)
+        .map(s => typeof s === 'string' ? { displayName: s.trim(), allowedAudiences: 'organization' as const } : { ...s, allowedAudiences: 'organization' as const });
     }
 
     let rawEntries: string[] = [];
@@ -507,9 +521,22 @@ export class ProfileWriter {
    * @param csvValue - Raw CSV value for languages column
    * @returns Array of parsed LanguageProficiency objects
    */
-  static parseLanguages(csvValue: string): LanguageProficiency[] {
-    if (!csvValue || csvValue.trim() === '') {
+  static parseLanguages(csvValue: string | any[]): LanguageProficiency[] {
+    if (!csvValue || (typeof csvValue === 'string' && csvValue.trim() === '')) {
       return [];
+    }
+
+    // JSON input may provide a native array of language objects or strings
+    if (Array.isArray(csvValue)) {
+      return csvValue
+        .filter(s => s)
+        .map(s => {
+          if (typeof s === 'string') {
+            const parsed = ProfileWriter.parseLanguageEntry(s);
+            return parsed || { displayName: s, allowedAudiences: 'organization' as const };
+          }
+          return { ...s, allowedAudiences: 'organization' as const };
+        });
     }
 
     const languages: LanguageProficiency[] = [];

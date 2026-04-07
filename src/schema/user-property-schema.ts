@@ -769,7 +769,13 @@ export function parsePropertyValue(propertyName: string, csvValue: string): any 
     return undefined;
   }
 
-  // Parse based on type
+  // JSON input may provide native types (arrays, objects, booleans, numbers).
+  // If the value is already the expected type, return it directly.
+  if (typeof csvValue !== 'string') {
+    return csvValue;
+  }
+
+  // Parse based on type (string values from CSV)
   switch (metadata.type) {
     case 'boolean':
       return csvValue.toLowerCase() === 'true' || csvValue === '1';
