@@ -1,10 +1,8 @@
 # Make Copilot Know Your People
 
-> Ask Copilot *"Who on my team speaks French and has an MBA?"* — and get silence. Copilot cannot answer questions about people it knows nothing about. This tool fixes that.
+Copilot cannot answer questions about people it knows nothing about. Ask *"Who speaks French and has an MBA?"* — silence. The profiles are empty. No skills, no education, no languages. Copilot sees org chart boxes, not people.
 
-**The problem is simple**: Microsoft 365 profiles are empty by default. No skills. No education. No languages. No certifications. Copilot sees org chart boxes, not people. Every "find me someone who..." query fails — not because Copilot can't reason, but because there's nothing to reason over.
-
-**This tool bridges the gap.** Define your people in a CSV or JSON file. Run two commands. Copilot can now search across skills, education, languages, patents, publications, and any custom property your organization cares about.
+This tool fills the profiles. Two commands turn a CSV or JSON file into rich, searchable people data across Microsoft 365 and Copilot.
 
 ```
 Your data (CSV or JSON)
@@ -18,19 +16,80 @@ Your data (CSV or JSON)
 └──────────────────────────────────────────────────────────┘
         |
         v
-Copilot can now answer:
+Copilot answers:
   "Who has Python skills and speaks German?"
   "Find someone with a patent in distributed systems"
   "Who on the Stockholm team has an MBA?"
 ```
 
-> **A Learning Project**: Built to explore Microsoft Graph APIs, OAuth 2.0 flows, and Graph Connectors. Everything we learned — including the mistakes — is in [docs/](./docs/).
+> Built to explore Microsoft Graph APIs, OAuth 2.0 flows, and Graph Connectors. Everything we learned — including the mistakes — is in [docs/](./docs/).
+
+---
+
+## Why This Matters
+
+Microsoft 365 stores people data in 20 profile collections, defined in the [Beta Profile API](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta). Each collection describes one facet of a person — their skills, languages, education, patents, and so on.
+
+**Empty profiles cripple Copilot.** When these collections hold no data, Copilot cannot match people to questions. It cannot find the French speaker, the patent holder, the certified architect. The intelligence is there; the data is not.
+
+This tool writes to **19 of the 20 collections**. One person at a time, one collection at a time, until Copilot has what it needs to give real answers about real people.
+
+### The 20 Profile Collections
+
+Every collection maps to a [Microsoft Graph Beta Profile](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta) relationship. This tool supports 19:
+
+| # | Collection | Graph Type | Description | Supported |
+|---|------------|------------|-------------|-----------|
+| 1 | [`accounts`](https://learn.microsoft.com/en-us/graph/api/resources/useraccountinformation?view=graph-rest-beta) | userAccountInformation | User account identity (UPN, directory object ID) | Yes |
+| 2 | [`addresses`](https://learn.microsoft.com/en-us/graph/api/resources/itemaddress?view=graph-rest-beta) | itemAddress | Physical addresses (street, city, country, postal code) | Yes |
+| 3 | [`anniversaries`](https://learn.microsoft.com/en-us/graph/api/resources/personanniversary?view=graph-rest-beta) | personAnniversary | Birthday, work anniversary, and other dates | Yes |
+| 4 | [`awards`](https://learn.microsoft.com/en-us/graph/api/resources/personaward?view=graph-rest-beta) | personAward | Honors and awards received | Yes |
+| 5 | [`certifications`](https://learn.microsoft.com/en-us/graph/api/resources/personcertification?view=graph-rest-beta) | personCertification | Professional certifications (PMP, AWS, etc.) | Yes |
+| 6 | [`educationalActivities`](https://learn.microsoft.com/en-us/graph/api/resources/educationalactivity?view=graph-rest-beta) | educationalActivity | Degrees, programs, institutions, fields of study | Yes |
+| 7 | [`emails`](https://learn.microsoft.com/en-us/graph/api/resources/itememail?view=graph-rest-beta) | itemEmail | Email addresses with type labels | Yes |
+| 8 | [`interests`](https://learn.microsoft.com/en-us/graph/api/resources/personinterest?view=graph-rest-beta) | personInterest | Personal and professional interests | Yes |
+| 9 | [`languages`](https://learn.microsoft.com/en-us/graph/api/resources/languageproficiency?view=graph-rest-beta) | languageProficiency | Languages with reading, spoken, and written proficiency | Yes |
+| 10 | [`names`](https://learn.microsoft.com/en-us/graph/api/resources/personname?view=graph-rest-beta) | personName | Display name, given name, surname | Yes |
+| 11 | [`notes`](https://learn.microsoft.com/en-us/graph/api/resources/personannotation?view=graph-rest-beta) | personAnnotation | About Me / freeform notes | Yes |
+| 12 | [`patents`](https://learn.microsoft.com/en-us/graph/api/resources/itempatent?view=graph-rest-beta) | itemPatent | Patents with filing details and status | Yes |
+| 13 | [`phones`](https://learn.microsoft.com/en-us/graph/api/resources/itemphone?view=graph-rest-beta) | itemPhone | Phone numbers with type (mobile, business) | Yes |
+| 14 | [`positions`](https://learn.microsoft.com/en-us/graph/api/resources/workposition?view=graph-rest-beta) | workPosition | Current and past job positions | Yes |
+| 15 | [`projects`](https://learn.microsoft.com/en-us/graph/api/resources/projectparticipation?view=graph-rest-beta) | projectParticipation | Project history and contributions | Yes |
+| 16 | [`publications`](https://learn.microsoft.com/en-us/graph/api/resources/itempublication?view=graph-rest-beta) | itemPublication | Books, articles, and published works | Yes |
+| 17 | [`skills`](https://learn.microsoft.com/en-us/graph/api/resources/skillproficiency?view=graph-rest-beta) | skillProficiency | Skills with proficiency levels and categories | Yes |
+| 18 | [`webAccounts`](https://learn.microsoft.com/en-us/graph/api/resources/webaccount?view=graph-rest-beta) | webAccount | LinkedIn, GitHub, and other web accounts | Yes |
+| 19 | [`websites`](https://learn.microsoft.com/en-us/graph/api/resources/personwebsite?view=graph-rest-beta) | personWebsite | Personal and professional websites | Yes |
+| 20 | [`responsibilities`](https://learn.microsoft.com/en-us/graph/api/resources/personresponsibility?view=graph-rest-beta) | personResponsibility | Job responsibilities and duties | Not yet |
+
+> `responsibilities` is not yet supported by the Microsoft 365 people data ingestion pipeline. When the `personResponsibilities` semantic label becomes available, this tool will pick it up.
+
+### How Collections Become Copilot-Searchable
+
+Collections alone do not make data searchable. Microsoft 365 Copilot searches people through **Graph Connectors with people data labels** — a mapping layer that tells Copilot which connector properties correspond to which profile facets.
+
+This tool registers **18 people data labels** across three groups:
+
+| Group | Labels | What Copilot Can Search |
+|-------|--------|-------------------------|
+| **Core** | personSkills, personNote, personCertifications, personProjects, personAwards, personAnniversaries, personWebSite | Skills, about me, certifications, projects, awards, birthday, personal site |
+| **Composite** | personName, personCurrentPosition, personAddresses, personEmails, personPhones, personWebAccounts | Identity and contact data composed from Entra ID fields |
+| **Rich entities** | personInterests, personEducationalActivities, personLanguages, personPublications, personPatents | Full entity schemas with nested fields (institutions, proficiency levels, filing details) |
+
+**Rich entities** accept both simple and complex input:
+- CSV: `"MIT"` becomes `{"institution":{"displayName":"MIT"}}`
+- JSON: Full `educationalActivity` with institution, program, fields of study, and dates
+
+### Custom Properties
+
+Any column not in the [standard schema](./src/schema/user-property-schema.ts) becomes a searchable custom property. If your CSV has `VTeam`, `CostCenter`, `BuildingAccess` — those join the connector schema at setup time.
+
+**Schema limitation**: Connector schemas cannot change after registration. To add columns, delete the old connector and create a new one.
 
 ---
 
 ## Two Minutes to Working Profiles
 
-### 1. The simplest case: a CSV
+### 1. A CSV — the simplest case
 
 Four columns. That's the minimum:
 
@@ -46,9 +105,9 @@ npm run provision -- --csv config/my-team.csv
 
 Users created. Licenses assigned. Done.
 
-### 2. Add enrichment data
+### 2. Add enrichment
 
-Add columns. The tool routes each one automatically:
+More columns, more data. The tool routes each one:
 
 ```csv
 name,email,role,department,skills,languages,aboutMe,certifications,VTeam
@@ -60,13 +119,11 @@ npm run provision -- --csv config/team.csv
 npm run option-b:setup -- --csv config/team.csv --connection-id m365people25
 ```
 
-Now Copilot knows Sarah has leadership skills and a PMP certification. Ask it.
+Copilot now knows Sarah has leadership skills and a PMP certification.
 
 ### 3. Rich profiles with JSON
 
-CSV works for simple data. JSON unlocks the full depth of Microsoft's profile schema — education with institutions and programs, languages with proficiency levels, patents with filing details, and per-user license assignment.
-
-The JSON format uses PascalCase keys (matching the Microsoft Graph Profile API schema). The tool auto-detects PascalCase and normalizes it internally:
+CSV handles flat data. JSON unlocks the full depth of the [Profile API schema](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta) — education with institutions and programs, languages with proficiency levels, patents with filing details, per-user license assignment:
 
 ```json
 [
@@ -127,26 +184,26 @@ npm run provision -- --json config/team.json
 npm run option-b:setup -- --json config/team.json --connection-id m365people01
 ```
 
-**Key features of JSON input:**
-- `MailNickName` + `USER_DOMAIN` from `.env` constructs the full email (no hardcoded domains)
-- `Licenses` array assigns per-user licenses by display name (resolved to SKU IDs automatically)
+**JSON input features:**
+- `MailNickName` + `USER_DOMAIN` from `.env` builds the full email
+- `Licenses` assigns per-user licenses by display name (resolved to SKU IDs)
 - `Manager` references other users by `MailNickName`
-- Rich profile entities match the Microsoft Graph Profile API schema
-- Custom org fields (`TerritoryTier1`, `Products`, etc.) become searchable connector properties
+- Rich entities match the [Microsoft Graph Profile API](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta) schema
+- Custom org fields (`TerritoryTier1`, `Products`) become searchable connector properties
 
-**CSV and JSON are not exclusive.** Use both — JSON overrides CSV per-property when you provide both:
+**CSV and JSON work together.** JSON overrides CSV per-property when both are provided:
 
 ```bash
 npm run option-b:setup -- --csv config/team.csv --json config/rich-profiles.json --connection-id m365people01
 ```
 
-No property is forced to be rich — a plain string like `"Leadership"` works identically to a full object with `CollaborationTags` and `Categories`.
+A plain string like `"Leadership"` works the same as a full object with `CollaborationTags` and `Categories`. No property is forced to be rich.
 
 ---
 
 ## How Data Flows
 
-Every field is automatically routed to where it belongs:
+Every field routes to where it belongs:
 
 ```
 Your Data                       Destination                  Copilot Searchable?
@@ -161,26 +218,6 @@ Profile fields (skills, certs,  Option B → Graph Connector   Yes (people data 
 Custom org fields (VTeam,       Option B → Graph Connector   Yes (searchable custom
  CostCenter, any unknown col)     (auto-detected)              properties)
 ```
-
-### The 18 People Data Labels
-
-Graph Connectors with people data labels are what make Copilot searchable. Without labels, Copilot cannot find your people by their attributes. This tool enables all 18:
-
-| Group | Labels | What They Carry |
-|-------|--------|-----------------|
-| **Core profile** | personSkills, personNote, personCertifications, personProjects, personAwards, personAnniversaries, personWebSite | Skills, about me, certifications, projects, awards, birthday, personal site |
-| **Identity** | personName, personCurrentPosition, personAddresses, personEmails, personPhones, personWebAccounts | Composite fields from Entra ID data |
-| **Rich entities** | personInterests, personEducationalActivities, personLanguages, personPublications, personPatents | Full Microsoft Graph entity schemas with nested fields |
-
-**Rich entities** accept both simple and complex input:
-- CSV: `"MIT"` becomes `{"institution":{"displayName":"MIT"}}`
-- JSON: Full `educationalActivity` with institution location, program details, and dates
-
-### Custom Properties
-
-Any column not in the [standard schema](./src/schema/user-property-schema.ts) becomes a searchable custom property automatically. If your CSV has `VTeam`, `CostCenter`, `BuildingAccess` — those become part of the connector schema at setup time.
-
-**Schema limitation**: Connector schemas cannot be updated after registration. To add new columns, delete the old connector and create a new one with a new ID.
 
 ---
 
@@ -333,7 +370,7 @@ This is a learning project. We documented everything:
 2. **Profile source registration must happen before ingestion** — Otherwise data never appears on profile cards
 3. **Schema is immutable** — Once registered, delete and recreate to change it
 4. **Path A vs Path B deserialization** — Labeled properties accept any JSON type; unlabeled properties accept strings only
-5. **PCP expects arrays where Graph docs say String** — `fieldsOfStudy`, `activities`, `awards` must be sent as arrays for downstream propagation
+5. **The ingestion pipeline expects arrays where Graph docs say String** — `fieldsOfStudy`, `activities`, `awards` must be sent as arrays for downstream propagation
 6. **Indexing is not instant** — Allow 6-24 hours before Copilot reflects new data
 7. **Never refactor working connector code** — Even "harmless" changes correlated with ingestion failures
 
