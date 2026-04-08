@@ -620,6 +620,7 @@ const INTERNAL_CSV_COLUMNS = new Set([
   'email',       // Maps to userPrincipalName (Option A)
   'role',        // Internal tracking only
   'ManagerEmail', // Used for manager assignment (Option A)
+  'licenses',    // Per-user license assignment (Option A)
 ]);
 
 /**

@@ -38,11 +38,14 @@ const STANDARD_USER_FIELDS = new Set([
   'name', 'email', 'role', 'department', 'givenName', 'surname', 'jobTitle',
   'employeeType', 'companyName', 'officeLocation', 'streetAddress', 'city',
   'state', 'country', 'postalCode', 'usageLocation', 'preferredLanguage',
-  'mobilePhone', 'businessPhones', 'employeeId', 'employeeHireDate', 'ManagerEmail'
+  'mobilePhone', 'businessPhones', 'employeeId', 'employeeHireDate', 'ManagerEmail',
+  // Used by composite labels (personEmails, personName) or Option A only:
+  'mail', 'displayName',
+  // Handled by Option A license assignment, not connector:
+  'licenses',
 ]);
 
-// Profile API fields (handled by Option A enrichment, not connectors)
-// Note: languages and interests are now ALSO sent via connector (personLanguages/personInterests labels)
+// Profile API only — no people data label, can't go through connector
 const PROFILE_API_FIELDS = new Set<string>([]);
 
 interface ConnectorOptions {

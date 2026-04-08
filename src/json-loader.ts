@@ -84,7 +84,10 @@ function normalizePascalRecord(record: any): any {
   // ── Identity ──
   // Construct email from MailNickName + domain
   if (r.mailNickName && !r.email) {
-    r.email = `${r.mailNickName}@${domain}`;
+    // Guard: if MailNickName already contains @, use it as-is (it's already a full UPN)
+    r.email = r.mailNickName.includes('@')
+      ? r.mailNickName
+      : `${r.mailNickName}@${domain}`;
   }
 
   // Map firstName/lastName → givenName/surname
@@ -108,7 +111,7 @@ function normalizePascalRecord(record: any): any {
   // ── Manager ──
   if ('manager' in r) {
     if (r.manager && typeof r.manager === 'string') {
-      r.ManagerEmail = `${r.manager}@${domain}`;
+      r.ManagerEmail = r.manager.includes('@') ? r.manager : `${r.manager}@${domain}`;
     } else {
       r.ManagerEmail = '';
     }
