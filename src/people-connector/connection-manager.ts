@@ -223,7 +223,7 @@ export class PeopleConnectionManager {
   async enableSearchExperience(): Promise<void> {
     try {
       await this.betaClient.api(`/external/connections/${this.connectionId}`).patch({
-        enabledContentExperiences: ['search'],
+        enabledContentExperiences: 'search',
       });
       console.log('✓ Enabled search content experience (Copilot/Search visibility)');
     } catch (error: any) {
