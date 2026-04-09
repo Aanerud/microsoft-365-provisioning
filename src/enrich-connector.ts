@@ -403,6 +403,27 @@ async function run(): Promise<void> {
     `OID mapping: ${oidSummary.hits} matched, ${oidSummary.misses} missing, ${oidSummary.existing} prefilled\n`
   );
 
+  // Gate: abort if too many OID misses (items without OID can't map to users)
+  const totalRows = connectorRows.length;
+  const matchedRows = oidSummary.hits + oidSummary.existing;
+  if (matchedRows === 0 && totalRows > 0) {
+    throw new Error(
+      `OID mapping failed: 0 of ${totalRows} users matched. ` +
+      `Items without externalDirectoryObjectId cannot be mapped to Entra ID profiles.\n` +
+      `  Fix: run 'npm run build-oid-cache -- --csv ${inputPath}' or run Option A first.`
+    );
+  }
+  if (oidSummary.misses > 0) {
+    const pct = Math.round((oidSummary.misses / totalRows) * 100);
+    console.warn(`⚠ ${oidSummary.misses} of ${totalRows} users (${pct}%) have no OID — those items will lack user mapping.`);
+    if (pct > 50 && !options.dryRun) {
+      throw new Error(
+        `Too many OID misses: ${oidSummary.misses} of ${totalRows} (${pct}%). ` +
+        `Rebuild the cache: npm run build-oid-cache -- --csv ${inputPath}`
+      );
+    }
+  }
+
   // Authenticate with app-only auth (client secret)
   const clientSecret = process.env.AZURE_CLIENT_SECRET;
   if (!clientSecret) {
