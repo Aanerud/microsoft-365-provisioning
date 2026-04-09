@@ -256,16 +256,29 @@ Grant admin consent after adding all permissions.
 cp .env.example .env
 ```
 
+Edit `.env` with your tenant credentials:
+
 ```bash
-AZURE_TENANT_ID=your-tenant-id
-AZURE_CLIENT_ID=your-client-id
-AZURE_CLIENT_SECRET=your-client-secret
-USER_DOMAIN=yourdomain.onmicrosoft.com
+AZURE_TENANT_ID=your-tenant-id          # Azure Portal > Entra ID > Overview
+AZURE_CLIENT_ID=your-client-id          # App Registrations > Your App
+AZURE_CLIENT_SECRET=your-client-secret  # Required for Option B (connector)
+USER_DOMAIN=yourdomain.onmicrosoft.com  # Your tenant domain
 
 # Licenses: JSON input uses per-user Licenses array (display names, auto-resolved).
 # LICENSE_SKU_IDS is the fallback for CSV input or JSON without Licenses field.
-LICENSE_SKU_IDS=sku-id-1,sku-id-2
+# Run 'npm run list-licenses' to see available SKUs.
+LICENSE_SKU_IDS=
 ```
+
+**What each option needs from `.env`:**
+
+| Variable | Option A | Option B | Notes |
+|----------|----------|----------|-------|
+| `AZURE_TENANT_ID` | Required | Required | |
+| `AZURE_CLIENT_ID` | Required | Required | |
+| `AZURE_CLIENT_SECRET` | Not needed | **Required** | Application auth for connector |
+| `USER_DOMAIN` | Required | Required | Constructs UPN from MailNickName |
+| `LICENSE_SKU_IDS` | Fallback | Not used | JSON `Licenses` array takes priority |
 
 ### 3. Install & Build
 
@@ -287,21 +300,27 @@ npm run provision -- --dry-run --csv config/team.csv  # Preview changes
 
 ### Enrichment (Graph Connector)
 
+Option B maps each connector item to an Entra ID user via their Object ID. This mapping is stored in an OID cache file. If you ran Option A first, the cache already exists. If you're running Option B standalone, build it first:
+
+```bash
+# Build OID cache (required before Option B if you haven't run Option A)
+npm run build-oid-cache -- --csv config/team.json
+```
+
+Then run the connector pipeline:
+
 ```bash
 # First time: create connection + schema + ingest
-npm run option-b:setup -- --csv config/team.csv --connection-id m365people25
-
-# With JSON (rich entity data)
-npm run option-b:setup -- --json config/team.json --connection-id m365people25
-
-# Merge mode: CSV base + JSON enrichment
-npm run option-b:setup -- --csv config/team.csv --json config/rich.json --connection-id m365people25
+npm run option-b:setup -- --json config/team.json --connection-id m365people01
 
 # Re-ingest (connection exists)
-npm run option-b:ingest -- --csv config/team.csv --connection-id m365people25
+npm run option-b:ingest -- --json config/team.json --connection-id m365people01
 
 # Preview without changes
-npm run option-b:dry-run -- --json config/team.json --connection-id m365people25
+npm run option-b:dry-run -- --json config/team.json --connection-id m365people01
+
+# Merge mode: CSV base + JSON enrichment
+npm run option-b:setup -- --csv config/team.csv --json config/rich.json --connection-id m365people01
 ```
 
 ### Tenant Management
