@@ -58,16 +58,40 @@ function normalizeToArray(raw: any): any[] {
   return [raw];
 }
 
+/**
+ * Recursively strip empty values from an object before serialization.
+ * Removes: "", null, undefined, [], [""] (array of only empty strings).
+ * Leaves: 0, false, non-empty strings, non-empty arrays.
+ */
+function stripEmpty(obj: any): any {
+  if (obj === null || obj === undefined || obj === '') return undefined;
+  if (typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    const cleaned = obj.map(stripEmpty).filter(v => v !== undefined);
+    return cleaned.length > 0 ? cleaned : undefined;
+  }
+
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const cleaned = stripEmpty(value);
+    if (cleaned !== undefined) {
+      result[key] = cleaned;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function serializeDisplayNameItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ displayName: String(item) });
 }
 
 function serializeAnniversaryItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ type: 'birthday', date: String(item) });
 }
@@ -75,7 +99,7 @@ function serializeAnniversaryItem(item: any): string {
 // personInterest entity: displayName, description, categories, collaborationTags, webUrl
 function serializeInterestItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ displayName: String(item) });
 }
@@ -96,9 +120,9 @@ function serializeEducationalActivityItem(item: any): string {
       if (typeof program.awards === 'string') {
         program.awards = [program.awards];
       }
-      return JSON.stringify({ ...item, program });
+      return JSON.stringify(stripEmpty({ ...item, program }) || { ...item, program });
     }
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ institution: { displayName: String(item) } });
 }
@@ -106,7 +130,7 @@ function serializeEducationalActivityItem(item: any): string {
 // languageProficiency entity: displayName, tag, reading, spoken, written
 function serializeLanguageItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ displayName: String(item) });
 }
@@ -114,7 +138,7 @@ function serializeLanguageItem(item: any): string {
 // itemPublication entity: displayName, description, publisher, publishedDate, thumbnailUrl, webUrl
 function serializePublicationItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ displayName: String(item) });
 }
@@ -122,7 +146,7 @@ function serializePublicationItem(item: any): string {
 // itemPatent entity: displayName, description, number, isPending, issuedDate, issuingAuthority, webUrl
 function serializePatentItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    return JSON.stringify(item);
+    return JSON.stringify(stripEmpty(item) || item);
   }
   return JSON.stringify({ displayName: String(item) });
 }
