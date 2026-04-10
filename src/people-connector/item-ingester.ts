@@ -251,17 +251,16 @@ export class PeopleItemIngester {
       });
     }
 
-    // personAddresses → [{"type":"business","street":"...","city":"...","state":"...","countryOrRegion":"...","postalCode":"..."}]
+    // personAddresses → [{"type":"business","city":"...","countryOrRegion":"..."}] (only non-empty fields)
     if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
+      const addr: any = { type: 'business' };
+      if (csvRow.streetAddress) addr.street = csvRow.streetAddress;
+      if (csvRow.city) addr.city = csvRow.city;
+      if (csvRow.state) addr.state = csvRow.state;
+      if (csvRow.country) addr.countryOrRegion = csvRow.country;
+      if (csvRow.postalCode) addr.postalCode = csvRow.postalCode;
       properties['addresses@odata.type'] = 'Collection(String)';
-      properties.addresses = [JSON.stringify({
-        type: 'business',
-        street: csvRow.streetAddress || '',
-        city: csvRow.city || '',
-        state: csvRow.state || '',
-        countryOrRegion: csvRow.country || '',
-        postalCode: csvRow.postalCode || '',
-      })];
+      properties.addresses = [JSON.stringify(addr)];
     }
 
     // personEmails → [{"address":"...","type":"main"}]
