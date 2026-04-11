@@ -45,7 +45,7 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
-debug/
+/debug/
 
 # Admin tools (may contain credentials or tenant-specific config)
 tools/admin/

@@ -9,7 +9,15 @@ dotenv.config();
 const tenantId = process.env.AZURE_TENANT_ID;
 const clientId = process.env.AZURE_CLIENT_ID;
 const clientSecret = process.env.AZURE_CLIENT_SECRET;
-const connectionId = process.argv[2] || process.env.CONNECTION_ID || process.env.M365_CONNECTION_ID || null;
+function resolveConnectionId() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--connection-id' && args[i + 1]) return args[i + 1];
+  }
+  const positional = args.find(a => !a.startsWith('--'));
+  return positional || process.env.CONNECTION_ID || process.env.M365_CONNECTION_ID || null;
+}
+const connectionId = resolveConnectionId();
 
 if (!tenantId || !clientId || !clientSecret) {
   console.error('❌ Missing required environment variables');

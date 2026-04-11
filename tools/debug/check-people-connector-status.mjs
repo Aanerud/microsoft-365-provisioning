@@ -236,5 +236,11 @@ To verify data appears on profiles:
 `);
 
 function resolveConnectionId() {
-  return process.argv[2] || process.env.CONNECTION_ID || process.env.M365_CONNECTION_ID || null;
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--connection-id' && args[i + 1]) return args[i + 1];
+  }
+  // Positional fallback (first non-flag arg)
+  const positional = args.find(a => !a.startsWith('--'));
+  return positional || process.env.CONNECTION_ID || process.env.M365_CONNECTION_ID || null;
 }

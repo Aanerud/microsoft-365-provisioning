@@ -393,10 +393,40 @@ src/
     user-property-schema.ts    # Property routing (Option A vs B)
 config/
   textcraft-europe.csv         # 95-person demo (CSV — TextCraft Europe)
-  textcraft-europe.json        # 95-person demo (JSON, camelCase — TextCraft Europe)
+  textcraft-europe.json        # 95-person demo (JSON, PascalCase — TextCraft Europe)
   sample-rich.json             # 2-person sample (PascalCase, full entity depth)
+tools/debug/
+  profile-matrix.mjs           # Track connector data propagation across all users
+  fetch-user-profile.mjs       # Full profile dump for a single user
+  verify-ingestion-progress.mjs # Compare ingested items vs search index
+  check-people-connector-status.mjs # Connector health: schema, source, priority
+  check-app-permissions.mjs    # Verify app registration permissions
+  run-checklist.mjs            # Run all debug checks in sequence
 docs/                          # Architecture, auth, state management, lessons
-tools/                         # Debug and admin utilities
+```
+
+### Debug Tools
+
+Six tools for diagnosing connector propagation issues. All require a valid token (`npm run test-connection` to refresh).
+
+```bash
+# Track propagation across all users — run daily after ingestion
+node tools/debug/profile-matrix.mjs --json config/team.json --connection-id m365people01
+
+# Full profile dump for one user (all collections, sources, dates)
+node tools/debug/fetch-user-profile.mjs nora.d@yourdomain.onmicrosoft.com
+
+# Connector health check (schema, profile source, prioritization)
+node tools/debug/check-people-connector-status.mjs --connection-id m365people01
+
+# Verify app registration has required permissions
+node tools/debug/check-app-permissions.mjs --connection-id m365people01
+
+# Compare ingested items vs Microsoft Search index
+node tools/debug/verify-ingestion-progress.mjs --connection-id m365people01 --csv config/team.json
+
+# Run all checks at once
+node tools/debug/run-checklist.mjs --connection-id m365people01
 ```
 
 ---
