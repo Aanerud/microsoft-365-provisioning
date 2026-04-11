@@ -16,11 +16,14 @@ import { parse } from 'csv-parse/sync';
 import dotenv from 'dotenv';
 import { GraphClient } from './graph-client.js';
 import { BrowserAuthServer } from './auth/browser-auth-server.js';
+import { loadRowsFromJson } from './json-loader.js';
+import { buildLicenseResolver } from './license-resolver.js';
 
 dotenv.config();
 
 interface UpdateLicensesOptions {
   csvPath: string;
+  jsonPath?: string;
   dryRun: boolean;
   auth: boolean;
 }
@@ -36,44 +39,65 @@ interface LicenseUpdateResult {
 
 class LicenseUpdater {
   private graphClient: GraphClient;
-  private licenseSkuIds: string[];
+  private envLicenseSkuIds: string[];
+  private perUserLicenseResolver: ((userLicenses: string[]) => string[]) | null = null;
 
   constructor(graphClient: GraphClient) {
     this.graphClient = graphClient;
 
     // Support both LICENSE_SKU_IDS (comma-separated) and legacy LICENSE_SKU_ID
     const skuIdsEnv = process.env.LICENSE_SKU_IDS || process.env.LICENSE_SKU_ID || '';
-    this.licenseSkuIds = skuIdsEnv
+    this.envLicenseSkuIds = skuIdsEnv
       .split(',')
       .map(id => id.trim())
       .filter(id => id.length > 0);
 
-    if (this.licenseSkuIds.length === 0) {
-      throw new Error('LICENSE_SKU_IDS not set in .env - cannot update licenses');
+    if (this.envLicenseSkuIds.length > 0) {
+      console.log(`📋 Configured ${this.envLicenseSkuIds.length} license(s) from .env:`);
+      this.envLicenseSkuIds.forEach(sku => console.log(`   - ${sku}`));
+      console.log('');
     }
-
-    console.log(`📋 Configured ${this.licenseSkuIds.length} license(s) for assignment:`);
-    this.licenseSkuIds.forEach(sku => console.log(`   - ${sku}`));
-    console.log('');
   }
 
   /**
-   * Load user emails from CSV file
+   * Load users from CSV or JSON file
    */
-  async loadUsersFromCsv(csvPath: string): Promise<Array<{ email: string; name: string }>> {
-    const content = await fs.readFile(csvPath, 'utf-8');
+  async loadUsers(options: UpdateLicensesOptions): Promise<any[]> {
+    const inputPath = options.jsonPath || options.csvPath;
+
+    if (inputPath.endsWith('.json')) {
+      const records = await loadRowsFromJson(inputPath);
+      console.log(`✓ Loaded ${records.length} users from JSON ${inputPath}\n`);
+
+      // Build per-user license resolver if any record has Licenses
+      const hasPerUserLicenses = records.some((r: any) => Array.isArray(r.licenses));
+      if (hasPerUserLicenses) {
+        this.perUserLicenseResolver = await buildLicenseResolver(this.graphClient, records);
+      }
+
+      return records;
+    }
+
+    // CSV
+    const content = await fs.readFile(inputPath, 'utf-8');
     const records = parse(content, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
     });
+    console.log(`✓ Loaded ${records.length} users from ${inputPath}\n`);
+    return records;
+  }
 
-    console.log(`✓ Loaded ${records.length} users from ${csvPath}\n`);
-
-    return records.map((record: any) => ({
-      email: record.email,
-      name: record.name || record.displayName,
-    }));
+  /**
+   * Get the SKU IDs for a specific user (per-user from JSON, or global from .env)
+   */
+  private getSkuIdsForUser(user: any): string[] {
+    if (this.perUserLicenseResolver && Array.isArray(user.licenses)) {
+      const resolved = this.perUserLicenseResolver(user.licenses);
+      if (resolved.length > 0) return resolved;
+    }
+    return this.envLicenseSkuIds;
   }
 
   /**
@@ -101,8 +125,8 @@ class LicenseUpdater {
       console.log('🔍 DRY RUN MODE - No changes will be made\n');
     }
 
-    // Load users from CSV
-    const csvUsers = await this.loadUsersFromCsv(options.csvPath);
+    // Load users from CSV or JSON
+    const csvUsers = await this.loadUsers(options);
 
     // Fetch all Azure AD users to map emails to user IDs
     console.log('🔍 Fetching Azure AD users...');
@@ -126,16 +150,17 @@ class LicenseUpdater {
     console.log('📝 Processing users...\n');
 
     for (const csvUser of csvUsers) {
-      const azureUser = userMap.get(csvUser.email.toLowerCase());
+      const email = csvUser.email || '';
+      const azureUser = userMap.get(email.toLowerCase());
 
       if (!azureUser) {
-        console.log(`  ⚠ User not found in Azure AD: ${csvUser.email}`);
+        console.log(`  ⚠ User not found in Azure AD: ${email}`);
         notFound++;
         continue;
       }
 
       const result: LicenseUpdateResult = {
-        email: csvUser.email,
+        email,
         displayName: azureUser.displayName,
         userId: azureUser.id,
         licensesAdded: [],
@@ -143,13 +168,21 @@ class LicenseUpdater {
         errors: [],
       };
 
+      // Get target licenses for this user (per-user from JSON, or global from .env)
+      const targetSkuIds = this.getSkuIdsForUser(csvUser);
+      if (targetSkuIds.length === 0) {
+        console.log(`  ⚠ ${azureUser.displayName} - no licenses configured`);
+        results.push(result);
+        continue;
+      }
+
       // Get current licenses
       const currentLicenses = await this.getUserLicenses(azureUser.id);
       const currentLicenseSet = new Set(currentLicenses.map(l => l.toLowerCase()));
 
       // Determine which licenses need to be added
       const licensesToAdd: string[] = [];
-      for (const skuId of this.licenseSkuIds) {
+      for (const skuId of targetSkuIds) {
         if (currentLicenseSet.has(skuId.toLowerCase())) {
           result.licensesSkipped.push(skuId);
           totalSkipped++;
@@ -268,6 +301,9 @@ async function main(): Promise<void> {
       case '--csv':
         options.csvPath = args[++i];
         break;
+      case '--json':
+        options.jsonPath = args[++i];
+        break;
       case '--dry-run':
         options.dryRun = true;
         break;
@@ -290,25 +326,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Check for license SKU IDs
+  // Check for license source (per-user from JSON, or LICENSE_SKU_IDS from .env)
   const skuIdsEnv = process.env.LICENSE_SKU_IDS || process.env.LICENSE_SKU_ID || '';
-  if (!skuIdsEnv.trim()) {
-    console.error('Error: LICENSE_SKU_IDS must be set in .env');
+  if (!skuIdsEnv.trim() && !options.jsonPath) {
+    console.error('Error: LICENSE_SKU_IDS must be set in .env (or use --json with per-user Licenses)');
     console.error('Run "npm run list-licenses" to see available licenses');
     process.exit(1);
   }
 
-  // Check CSV file exists
+  // Check input file exists
+  const inputPath = options.jsonPath || options.csvPath;
   try {
-    await fs.access(options.csvPath);
+    await fs.access(inputPath);
   } catch {
-    console.error(`Error: CSV file not found: ${options.csvPath}`);
+    console.error(`Error: Input file not found: ${inputPath}`);
     process.exit(1);
   }
 
   console.log('🔑 License Update Tool\n');
   console.log('Configuration:');
-  console.log(`  CSV: ${options.csvPath}`);
+  console.log(`  Input: ${inputPath}`);
   console.log(`  Dry Run: ${options.dryRun ? 'Yes' : 'No'}`);
   console.log('');
 
