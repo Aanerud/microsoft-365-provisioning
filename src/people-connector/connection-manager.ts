@@ -305,7 +305,8 @@ export class PeopleConnectionManager {
       // Step 2: Add to prioritized sources in profile property settings
       // This ensures our connector data appears in user profiles
       // Reference: https://learn.microsoft.com/en-us/graph/profilepriority-configure-profilepropertysetting
-      const sourceUrl = `https://graph.microsoft.com/beta/admin/people/profileSources(sourceId='${this.connectionId}')`;
+      // IMPORTANT: docs specify v1.0, not beta, for prioritized source URLs
+      const sourceUrl = `https://graph.microsoft.com/v1.0/admin/people/profileSources(sourceId='${this.connectionId}')`;
 
       try {
         // Get current settings (returns a collection with 'value' array)
