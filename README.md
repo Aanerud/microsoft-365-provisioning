@@ -335,15 +335,45 @@ npm run reset-tenant:confirm            # Delete all non-admin users
 
 ### Verification
 
+After ingestion, data does NOT appear on profiles immediately. Microsoft's internal pipeline (CAPIv2) processes items in batches over multiple export cycles. Expect:
+
+- **6-24 hours**: First items start appearing on profiles
+- **24-48 hours**: Most items propagated
+- **`profileSyncEnabled=False`**: Normal on initial cycles, flips to True over time
+
+Track propagation with the profile matrix tool:
+
 ```bash
-node tools/debug/verify-ingestion-progress.mjs \
-  --search-auth delegated \
-  --connection-id m365people25 \
-  --csv config/team.csv \
-  --query "*"
+# Show which users have connector data on their profiles
+node tools/debug/profile-matrix.mjs --json config/team.json --connection-id m365people01
 ```
 
-Indexing takes 6+ hours. Profile data propagation takes 1-24 hours.
+Output:
+```
+Name                          SKL INT CRT AWD PRJ EDU LNG PUB PAT NAM POS ADR EML PHN NTE  Source
+─────────────────────────────────────────────────────────────────────────────────────────────────
+Nora Dahl                      10  ·   1   ·   ·   1   2   ·   ·   1   1   ·   1   2   ·   CONN
+Sofia Johansson                 ·  ·   ·   ·   ·   ·   ·   ·   ·   .   .   ·   .   .   ·   aad
+─────────────────────────────────────────────────────────────────────────────────────────────────
+2/94 users have connector data (2%)
+Legend: N = items from connector, . = data from other source, · = empty
+```
+
+Run this daily after ingestion. The numbers fill in gradually as Microsoft processes each batch. If a user shows `CONN`, their skills, education, languages, etc. are now Copilot-searchable.
+
+You can also verify individual items and the schema:
+
+```bash
+# Check a specific user's profile
+node tools/debug/fetch-user-profile.mjs nora.d@yourdomain.onmicrosoft.com
+
+# Verify ingestion via Microsoft Search
+node tools/debug/verify-ingestion-progress.mjs \
+  --search-auth delegated \
+  --connection-id m365people01 \
+  --csv config/team.json \
+  --query "*"
+```
 
 ---
 
