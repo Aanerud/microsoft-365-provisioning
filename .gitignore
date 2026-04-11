@@ -47,8 +47,7 @@ temp/
 *.tmp
 debug/
 
-# Internal debug/admin tools (may contain credentials or tenant-specific config)
-tools/debug/
+# Admin tools (may contain credentials or tenant-specific config)
 tools/admin/
 
 # Token cache (stored in home directory, but just in case)
