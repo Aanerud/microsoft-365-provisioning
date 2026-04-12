@@ -7,11 +7,11 @@ import { GraphClient } from './graph-client.js';
 // Static mapping: common display names → skuPartNumber patterns
 const DISPLAY_NAME_PATTERNS: Array<{ pattern: RegExp; skuPattern: RegExp }> = [
   { pattern: /Office 365 E5.*no Teams/i, skuPattern: /Office_365_E5.*no.Teams|ENTERPRISEPREMIUM_NOPSTNCONF/i },
-  { pattern: /Office 365 E5/i, skuPattern: /Office_365_E5|ENTERPRISEPREMIUM/i },
+  { pattern: /Office 365 E5/i, skuPattern: /^(?!.*no.Teams).*(Office_365_E5|ENTERPRISEPREMIUM)/i },
   { pattern: /Office 365 E3/i, skuPattern: /ENTERPRISEPACK/i },
   { pattern: /Microsoft 365 E5/i, skuPattern: /SPE_E5/i },
   { pattern: /Microsoft 365 E3/i, skuPattern: /SPE_E3/i },
-  { pattern: /Microsoft Teams Enterprise/i, skuPattern: /Teams_Enterprise|TEAMS/i },
+  { pattern: /Microsoft Teams Enterprise/i, skuPattern: /^Microsoft_Teams_Enterprise|^TEAMS_ENTERPRISE/i },
   { pattern: /Microsoft 365 Copilot/i, skuPattern: /Microsoft_365_Copilot|Copilot/i },
   { pattern: /Power BI Pro/i, skuPattern: /POWER_BI_PRO/i },
   { pattern: /Visio/i, skuPattern: /VISIO/i },

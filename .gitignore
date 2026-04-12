@@ -47,12 +47,25 @@ temp/
 *.tmp
 /debug/
 
-# Admin tools (may contain credentials or tenant-specific config)
-tools/admin/
+# Admin tools — tracked in git (credentials come from .env, not these scripts)
 
 # Token cache (stored in home directory, but just in case)
 token-cache.json
 
 # Internal data files (contain real tenant data — never commit)
 config/users.config.json
+config/users.config.backup.json
+config/users.config.diff
 config/profile-data.json
+config/textcraft-europe.csv
+config/textcraft-europe.json
+config/sample-rich.json
+
+# Credentials
+cred.txt
+
+# Nested repos / scratch
+napkin/
+
+# gstack
+.gstack/
