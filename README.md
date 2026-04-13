@@ -187,9 +187,33 @@ npm run option-b:setup -- --json config/team.json --connection-id m365people01
 **JSON input features:**
 - `MailNickName` + `USER_DOMAIN` from `.env` builds the full email
 - `Licenses` assigns per-user licenses by display name (resolved to SKU IDs)
-- `Manager` references other users by `MailNickName`
+- `Manager` references other users by `MailNickName` (for Entra ID manager assignment)
 - Rich entities match the [Microsoft Graph Profile API](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta) schema
-- Custom org fields (`TerritoryTier1`, `Products`) become searchable connector properties
+- Custom org fields (`TerritoryTier1`, `Products`, `DeploymentManager`) become searchable connector properties
+
+**Relationships (relatedPerson):**
+
+To create person-to-person relationships that Copilot can reason over (e.g. "Who is Sofia's manager?"), structure them as [`relatedPerson`](https://learn.microsoft.com/en-us/graph/api/resources/relatedperson?view=graph-rest-beta) objects inside `Positions` or `Projects`:
+
+```json
+"Positions": [{
+  "Detail": { "JobTitle": "Senior Engineer", "Company": { "DisplayName": "Contoso" } },
+  "IsCurrent": true,
+  "Manager": {
+    "DisplayName": "Erik Johansson",
+    "UserPrincipalName": "erik.j@domain.onmicrosoft.com",
+    "Relationship": "manager"
+  },
+  "Colleagues": [{
+    "DisplayName": "Astrid Lindqvist",
+    "UserPrincipalName": "astrid.l@domain.onmicrosoft.com",
+    "Relationship": "other",
+    "RelationshipTypeName": "TalentConsultant"
+  }]
+}]
+```
+
+Flat top-level fields like `"DeploymentManager": "nora.d"` become searchable custom text properties, but PCP does NOT treat them as person relationships. Only properly structured `relatedPerson` objects inside `Positions`/`Projects` create actual relationship links.
 
 **CSV and JSON work together.** JSON overrides CSV per-property when both are provided:
 

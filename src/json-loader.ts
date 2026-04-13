@@ -76,9 +76,8 @@ function deepNormalizeKeys(obj: any): any {
 /**
  * Normalize a PascalCase record into the camelCase format the pipeline expects.
  * Runs AFTER deepNormalizeKeys() — all keys are already camelCase.
- * @param nickToDisplayName — lookup map from MailNickName → DisplayName for relatedPerson building
  */
-function normalizePascalRecord(record: any, nickToDisplayName: Map<string, string>): any {
+function normalizePascalRecord(record: any): any {
   const domain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
   const r = { ...record };
 
@@ -110,8 +109,6 @@ function normalizePascalRecord(record: any, nickToDisplayName: Map<string, strin
   }
 
   // ── Manager ──
-  // Keep manager value for relatedPerson building (below), but also set ManagerEmail for Option A
-  const managerNick = r.manager;
   if ('manager' in r) {
     if (r.manager && typeof r.manager === 'string') {
       r.ManagerEmail = r.manager.includes('@') ? r.manager : `${r.manager}@${domain}`;
@@ -189,75 +186,13 @@ function normalizePascalRecord(record: any, nickToDisplayName: Map<string, strin
       .join(', ');
   }
 
-  // ── Positions: build relatedPerson from relationship fields ──
-  // This embeds manager/colleagues inside the workPosition entity for the personCurrentPosition label
+  // ── Positions: pass through as-is ──
+  // If the JSON has positions with relatedPerson (manager, colleagues) already structured,
+  // they flow through to the connector. We do NOT auto-convert flat fields into relatedPerson —
+  // that's the data science team's responsibility to structure correctly.
+  // Flat top-level fields (DeploymentManager, Sponsor, etc.) stay as custom connector properties.
   if (Array.isArray(r.positions) && r.positions.length > 0) {
-    const pos = r.positions[0]; // First position = current
-
-    // Helper: build a relatedPerson from a MailNickName
-    const buildRelatedPerson = (nick: string, relationship: string, typeName?: string): any => {
-      if (!nick) return null;
-      const upn = nick.includes('@') ? nick : `${nick}@${domain}`;
-      const person: any = {
-        displayName: nickToDisplayName.get(nick) || nick,
-        userPrincipalName: upn,
-        relationship,
-      };
-      if (typeName) person.relationshipTypeName = typeName;
-      return person;
-    };
-
-    // Build manager relatedPerson
-    if (managerNick && typeof managerNick === 'string') {
-      pos.manager = buildRelatedPerson(managerNick, 'manager');
-    }
-
-    // Build colleagues from relationship fields
-    const colleagues: any[] = [];
-
-    if (r.deploymentManager && typeof r.deploymentManager === 'string') {
-      colleagues.push(buildRelatedPerson(r.deploymentManager, 'other', 'DeploymentManager'));
-    }
-    if (r.onboardingBuddy && typeof r.onboardingBuddy === 'string') {
-      colleagues.push(buildRelatedPerson(r.onboardingBuddy, 'other', 'OnboardingBuddy'));
-    }
-    if (r.talentConsultant && typeof r.talentConsultant === 'string') {
-      colleagues.push(buildRelatedPerson(r.talentConsultant, 'other', 'TalentConsultant'));
-    }
-    if (r.sponsor && typeof r.sponsor === 'string') {
-      colleagues.push(buildRelatedPerson(r.sponsor, 'sponsor'));
-    }
-
-    // Array relationships
-    const arrayRelFields: Array<[string, string]> = [
-      ['mentees', 'Mentee'],
-      ['onboardingBuddyFor', 'OnboardingBuddyFor'],
-    ];
-    for (const [field, typeName] of arrayRelFields) {
-      if (Array.isArray(r[field])) {
-        for (const nick of r[field]) {
-          if (typeof nick === 'string' && nick) {
-            colleagues.push(buildRelatedPerson(nick, 'other', typeName));
-          }
-        }
-      }
-    }
-
-    if (colleagues.length > 0) {
-      pos.colleagues = colleagues.filter(Boolean);
-    }
-
-    // Set isCurrent on first position
-    pos.isCurrent = true;
-  }
-
-  // Clean up flat relationship fields (now embedded in positions)
-  const relationshipFields = [
-    'deploymentManager', 'onboardingBuddy', 'mentees',
-    'onboardingBuddyFor', 'talentConsultant', 'sponsor',
-  ];
-  for (const f of relationshipFields) {
-    delete r[f];
+    r.positions[0].isCurrent = true;
   }
 
   // ── Strip PCP metadata from profile arrays ──
@@ -321,15 +256,7 @@ export async function loadRowsFromJson(jsonPath: string): Promise<any[]> {
   if (detectPascalCaseFormat(records)) {
     console.log(`Detected PascalCase format (${records.length} records), normalizing to camelCase...`);
 
-    // Build MailNickName → DisplayName lookup for relatedPerson resolution
-    const nickToDisplayName = new Map<string, string>();
-    for (const r of records) {
-      const nick = r.MailNickName || r.mailNickName;
-      const name = r.DisplayName || r.displayName;
-      if (nick && name) nickToDisplayName.set(nick, name);
-    }
-
-    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r), nickToDisplayName));
+    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r)));
   }
 
   // Validate email on every record (after normalization)

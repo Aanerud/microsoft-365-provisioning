@@ -43,7 +43,7 @@ const STANDARD_USER_FIELDS = new Set([
   'mail', 'displayName',
   // Handled by Option A license assignment, not connector:
   'licenses',
-  // Used by personCurrentPosition (positions array with relatedPerson):
+  // Used by personCurrentPosition composite (positions array passed to item-ingester):
   'positions',
 ]);
 
