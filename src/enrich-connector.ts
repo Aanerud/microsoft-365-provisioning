@@ -43,6 +43,8 @@ const STANDARD_USER_FIELDS = new Set([
   'mail', 'displayName',
   // Handled by Option A license assignment, not connector:
   'licenses',
+  // Used by personCurrentPosition (positions array with relatedPerson):
+  'positions',
 ]);
 
 // Profile API only — no people data label, can't go through connector

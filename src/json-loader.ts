@@ -76,8 +76,9 @@ function deepNormalizeKeys(obj: any): any {
 /**
  * Normalize a PascalCase record into the camelCase format the pipeline expects.
  * Runs AFTER deepNormalizeKeys() — all keys are already camelCase.
+ * @param nickToDisplayName — lookup map from MailNickName → DisplayName for relatedPerson building
  */
-function normalizePascalRecord(record: any): any {
+function normalizePascalRecord(record: any, nickToDisplayName: Map<string, string>): any {
   const domain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
   const r = { ...record };
 
@@ -109,6 +110,8 @@ function normalizePascalRecord(record: any): any {
   }
 
   // ── Manager ──
+  // Keep manager value for relatedPerson building (below), but also set ManagerEmail for Option A
+  const managerNick = r.manager;
   if ('manager' in r) {
     if (r.manager && typeof r.manager === 'string') {
       r.ManagerEmail = r.manager.includes('@') ? r.manager : `${r.manager}@${domain}`;
@@ -186,6 +189,77 @@ function normalizePascalRecord(record: any): any {
       .join(', ');
   }
 
+  // ── Positions: build relatedPerson from relationship fields ──
+  // This embeds manager/colleagues inside the workPosition entity for the personCurrentPosition label
+  if (Array.isArray(r.positions) && r.positions.length > 0) {
+    const pos = r.positions[0]; // First position = current
+
+    // Helper: build a relatedPerson from a MailNickName
+    const buildRelatedPerson = (nick: string, relationship: string, typeName?: string): any => {
+      if (!nick) return null;
+      const upn = nick.includes('@') ? nick : `${nick}@${domain}`;
+      const person: any = {
+        displayName: nickToDisplayName.get(nick) || nick,
+        userPrincipalName: upn,
+        relationship,
+      };
+      if (typeName) person.relationshipTypeName = typeName;
+      return person;
+    };
+
+    // Build manager relatedPerson
+    if (managerNick && typeof managerNick === 'string') {
+      pos.manager = buildRelatedPerson(managerNick, 'manager');
+    }
+
+    // Build colleagues from relationship fields
+    const colleagues: any[] = [];
+
+    if (r.deploymentManager && typeof r.deploymentManager === 'string') {
+      colleagues.push(buildRelatedPerson(r.deploymentManager, 'other', 'DeploymentManager'));
+    }
+    if (r.onboardingBuddy && typeof r.onboardingBuddy === 'string') {
+      colleagues.push(buildRelatedPerson(r.onboardingBuddy, 'other', 'OnboardingBuddy'));
+    }
+    if (r.talentConsultant && typeof r.talentConsultant === 'string') {
+      colleagues.push(buildRelatedPerson(r.talentConsultant, 'other', 'TalentConsultant'));
+    }
+    if (r.sponsor && typeof r.sponsor === 'string') {
+      colleagues.push(buildRelatedPerson(r.sponsor, 'sponsor'));
+    }
+
+    // Array relationships
+    const arrayRelFields: Array<[string, string]> = [
+      ['mentees', 'Mentee'],
+      ['onboardingBuddyFor', 'OnboardingBuddyFor'],
+    ];
+    for (const [field, typeName] of arrayRelFields) {
+      if (Array.isArray(r[field])) {
+        for (const nick of r[field]) {
+          if (typeof nick === 'string' && nick) {
+            colleagues.push(buildRelatedPerson(nick, 'other', typeName));
+          }
+        }
+      }
+    }
+
+    if (colleagues.length > 0) {
+      pos.colleagues = colleagues.filter(Boolean);
+    }
+
+    // Set isCurrent on first position
+    pos.isCurrent = true;
+  }
+
+  // Clean up flat relationship fields (now embedded in positions)
+  const relationshipFields = [
+    'deploymentManager', 'onboardingBuddy', 'mentees',
+    'onboardingBuddyFor', 'talentConsultant', 'sponsor',
+  ];
+  for (const f of relationshipFields) {
+    delete r[f];
+  }
+
   // ── Strip PCP metadata from profile arrays ──
   const profileArrays = [
     'skills', 'interests', 'certifications', 'awards', 'projects',
@@ -211,8 +285,9 @@ function normalizePascalRecord(record: any): any {
   // Without removal they'd be detected as "custom connector properties".
   const consumedFields = [
     'mailNickName', 'firstName', 'lastName', 'address', 'phoneNumber',
-    'addresses', 'phones', 'emails', 'positions', 'notes',
+    'addresses', 'phones', 'emails', 'notes',
     'anniversaries', 'websites', 'webAccounts',
+    // 'positions' intentionally kept — used by item-ingester for personCurrentPosition with relatedPerson
   ];
   for (const f of consumedFields) {
     delete r[f];
@@ -245,7 +320,16 @@ export async function loadRowsFromJson(jsonPath: string): Promise<any[]> {
   // Auto-detect PascalCase format and normalize
   if (detectPascalCaseFormat(records)) {
     console.log(`Detected PascalCase format (${records.length} records), normalizing to camelCase...`);
-    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r)));
+
+    // Build MailNickName → DisplayName lookup for relatedPerson resolution
+    const nickToDisplayName = new Map<string, string>();
+    for (const r of records) {
+      const nick = r.MailNickName || r.mailNickName;
+      const name = r.DisplayName || r.displayName;
+      if (nick && name) nickToDisplayName.set(nick, name);
+    }
+
+    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r), nickToDisplayName));
   }
 
   // Validate email on every record (after normalization)

@@ -240,8 +240,13 @@ export class PeopleItemIngester {
       });
     }
 
-    // personCurrentPosition → {"detail":{"jobTitle":"...","company":{"displayName":"..."}},"isCurrent":true}
-    if (csvRow.jobTitle || csvRow.companyName || csvRow.department) {
+    // personCurrentPosition → workPosition with optional relatedPerson (manager, colleagues)
+    if (Array.isArray(csvRow.positions) && csvRow.positions.length > 0) {
+      // Rich positions data from JSON — includes detail, manager, colleagues
+      const pos = csvRow.positions[0];
+      properties.currentPosition = JSON.stringify(stripEmpty(pos) || pos);
+    } else if (csvRow.jobTitle || csvRow.companyName || csvRow.department) {
+      // Fallback: flat fields from CSV
       properties.currentPosition = JSON.stringify({
         detail: {
           jobTitle: csvRow.jobTitle || '',

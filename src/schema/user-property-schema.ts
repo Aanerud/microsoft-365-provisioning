@@ -621,6 +621,7 @@ const INTERNAL_CSV_COLUMNS = new Set([
   'role',        // Internal tracking only
   'ManagerEmail', // Used for manager assignment (Option A)
   'licenses',    // Per-user license assignment (Option A)
+  'positions',   // Used by personCurrentPosition composite (with relatedPerson)
 ]);
 
 /**
