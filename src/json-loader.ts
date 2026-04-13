@@ -167,6 +167,21 @@ function normalizePascalRecord(record: any): any {
     if (primary) r.mail = primary.address;
   }
 
+  // ── Projects: fix relatedPerson UPNs (same as positions) ──
+  if (Array.isArray(r.projects)) {
+    const fixUpn = (person: any) => {
+      if (!person || typeof person !== 'object') return;
+      const upn = person.userPrincipalName;
+      if (upn && upn.includes('@') && !upn.includes(domain)) {
+        person.userPrincipalName = upn.split('@')[0] + '@' + domain;
+      }
+    };
+    for (const proj of r.projects) {
+      if (Array.isArray(proj.colleagues)) proj.colleagues.forEach(fixUpn);
+      if (Array.isArray(proj.sponsors)) proj.sponsors.forEach(fixUpn);
+    }
+  }
+
   // ── Education: fieldsOfStudy string → array ──
   if (Array.isArray(r.educationalActivities)) {
     for (const edu of r.educationalActivities) {
@@ -193,6 +208,22 @@ function normalizePascalRecord(record: any): any {
   // Flat top-level fields (DeploymentManager, Sponsor, etc.) stay as custom connector properties.
   if (Array.isArray(r.positions) && r.positions.length > 0) {
     r.positions[0].isCurrent = true;
+
+    // Fix relatedPerson UPNs: rewrite non-tenant domains to USER_DOMAIN
+    // The data science team may use company emails (fabrikam.com) but PCP needs tenant UPNs
+    const fixUpn = (person: any) => {
+      if (!person || typeof person !== 'object') return;
+      const upn = person.userPrincipalName;
+      if (upn && upn.includes('@') && !upn.includes(domain)) {
+        person.userPrincipalName = upn.split('@')[0] + '@' + domain;
+      }
+    };
+
+    for (const pos of r.positions) {
+      if (pos.manager) fixUpn(pos.manager);
+      if (Array.isArray(pos.colleagues)) pos.colleagues.forEach(fixUpn);
+      if (Array.isArray(pos.sponsors)) pos.sponsors.forEach(fixUpn);
+    }
   }
 
   // ── Strip PCP metadata from profile arrays ──
