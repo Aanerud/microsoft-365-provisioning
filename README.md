@@ -263,6 +263,7 @@ Create an app in [Azure Portal](https://portal.azure.com) > Entra ID > App regis
 | `Directory.ReadWrite.All` | Delegated | Option A | Manage directory objects |
 | `People.Read.All` | Delegated | Option A | Read profile data for enrichment |
 | `Organization.Read.All` | Delegated | Option A | Read tenant info |
+| `GroupMember.ReadWrite.All` | Delegated | Option A | Assign users to groups |
 | `offline_access` | Delegated | Option A | Keep tokens refreshed |
 | `ExternalConnection.ReadWrite.OwnedBy` | Application | Option B | Create/manage Graph Connector connections |
 | `ExternalItem.ReadWrite.OwnedBy` | Application | Option B | Ingest items into connections |
@@ -353,9 +354,35 @@ npm run option-b:setup -- --csv config/team.csv --json config/rich.json --connec
 npm run list-users                      # List all users
 npm run list-licenses                   # Show available licenses
 npm run update-licenses                 # Add missing licenses
+npm run update-groups                   # Assign users to Entra ID groups
 npm run reset-tenant                    # Preview cleanup (dry run)
 npm run reset-tenant:confirm            # Delete all non-admin users
 ```
+
+### Group Membership
+
+Users can be assigned to Entra ID groups from the JSON `Groups` field. Groups must already exist in the tenant — the tool resolves by display name.
+
+```json
+{
+  "MailNickName": "sarah.chen",
+  "DisplayName": "Sarah Chen",
+  "Groups": [
+    "Global HR Mailing List",
+    "Customer Council"
+  ]
+}
+```
+
+```bash
+# Preview group assignments
+npm run update-groups -- --json config/team.json --dry-run
+
+# Apply group memberships
+npm run update-groups -- --json config/team.json
+```
+
+The command is idempotent — users already in the group are skipped. Requires `GroupMember.ReadWrite.All` (Delegated) permission.
 
 ### Verification
 
