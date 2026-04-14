@@ -145,11 +145,20 @@ should be an array of group display names.
   console.log('🔍 Resolving group names...');
   const groupMap = await graphClient.getGroupsByNames([...allGroupNames]);
 
+  // Create groups that don't exist
   for (const name of allGroupNames) {
     if (groupMap.has(name)) {
       console.log(`  ✓ "${name}" → ${groupMap.get(name)}`);
+    } else if (options.dryRun) {
+      console.log(`  📋 "${name}" → would be created`);
     } else {
-      console.warn(`  ⚠ "${name}" → NOT FOUND in Entra ID`);
+      try {
+        const groupId = await graphClient.createGroup(name);
+        groupMap.set(name, groupId);
+        console.log(`  + "${name}" → created (${groupId})`);
+      } catch (error: any) {
+        console.warn(`  ⚠ "${name}" → failed to create: ${error.message}`);
+      }
     }
   }
   console.log('');

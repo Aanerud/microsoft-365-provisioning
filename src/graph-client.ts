@@ -975,6 +975,25 @@ export class GraphClient {
   }
 
   /**
+   * Create a security group by display name. Returns the new group ID.
+   */
+  async createGroup(displayName: string): Promise<string> {
+    const mailNickname = displayName
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .substring(0, 64)
+      .toLowerCase();
+
+    const response = await this.client.api('/groups').post({
+      displayName,
+      mailNickname: mailNickname || 'group',
+      mailEnabled: false,
+      securityEnabled: true,
+      groupTypes: [],
+    });
+    return response.id;
+  }
+
+  /**
    * Get current group memberships for a user.
    */
   async getUserGroupIds(userId: string): Promise<string[]> {
