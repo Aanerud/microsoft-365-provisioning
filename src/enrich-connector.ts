@@ -45,6 +45,8 @@ const STANDARD_USER_FIELDS = new Set([
   'licenses',
   // Used by personCurrentPosition composite (positions array passed to item-ingester):
   'positions',
+  // Handled by Option A group membership (update-groups.ts), not connector:
+  'groups',
 ]);
 
 // Profile API only — no people data label, can't go through connector
