@@ -405,6 +405,37 @@ async function run(): Promise<void> {
     `OID mapping: ${oidSummary.hits} matched, ${oidSummary.misses} missing, ${oidSummary.existing} prefilled\n`
   );
 
+  // Inject OIDs into relatedPerson objects inside positions and projects
+  // PCP resolves relatedPerson via userId (OID) — without it, DsApi lookup fails
+  const normalizeUpn = (upn: string) => upn.toLowerCase();
+  const cacheUsers = oidCacheResult.cache.users || {};
+  let relatedPersonOidHits = 0;
+  for (const row of connectorRows) {
+    const injectOid = (person: any) => {
+      if (!person || typeof person !== 'object' || person.userId) return;
+      const upn = person.userPrincipalName;
+      if (!upn) return;
+      const oid = cacheUsers[normalizeUpn(upn)];
+      if (oid) { person.userId = oid; relatedPersonOidHits++; }
+    };
+    if (Array.isArray(row.positions)) {
+      for (const pos of row.positions) {
+        if (pos.manager) injectOid(pos.manager);
+        if (Array.isArray(pos.colleagues)) pos.colleagues.forEach(injectOid);
+        if (Array.isArray(pos.sponsors)) pos.sponsors.forEach(injectOid);
+      }
+    }
+    if (Array.isArray(row.projects)) {
+      for (const proj of row.projects) {
+        if (Array.isArray(proj.colleagues)) proj.colleagues.forEach(injectOid);
+        if (Array.isArray(proj.sponsors)) proj.sponsors.forEach(injectOid);
+      }
+    }
+  }
+  if (relatedPersonOidHits > 0) {
+    console.log(`  Injected OIDs into ${relatedPersonOidHits} relatedPerson objects`);
+  }
+
   // Gate: abort if too many OID misses (items without OID can't map to users)
   const totalRows = connectorRows.length;
   const matchedRows = oidSummary.hits + oidSummary.existing;
