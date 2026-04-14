@@ -948,6 +948,110 @@ export class GraphClient {
     // Shuffle the password
     return password.split('').sort(() => Math.random() - 0.5).join('');
   }
+
+  // ─── Group Management ───────────────────────────────────────────────────
+
+  /**
+   * Resolve group display names to group IDs.
+   * Returns a map of displayName → groupId.
+   */
+  async getGroupsByNames(names: string[]): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    for (const name of names) {
+      try {
+        const response = await this.client
+          .api('/groups')
+          .filter(`displayName eq '${name.replace(/'/g, "''")}'`)
+          .select('id,displayName')
+          .get();
+        if (response.value && response.value.length > 0) {
+          result.set(name, response.value[0].id);
+        }
+      } catch (error: any) {
+        console.warn(`  ⚠ Failed to resolve group "${name}": ${error.message}`);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get current group memberships for a user.
+   */
+  async getUserGroupIds(userId: string): Promise<string[]> {
+    try {
+      const response = await this.client
+        .api(`/users/${userId}/memberOf`)
+        .select('id')
+        .get();
+      return (response.value || []).map((g: any) => g.id);
+    } catch (error: any) {
+      console.warn(`  ⚠ Failed to get groups for user ${userId}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Batch add users to groups. Handles "already a member" (400) gracefully.
+   */
+  async addGroupMembersBatch(assignments: Array<{
+    groupId: string;
+    userId: string;
+    groupName: string;
+    userName: string;
+  }>): Promise<{
+    added: number;
+    alreadyMember: number;
+    failed: Array<{ userName: string; groupName: string; error: string }>;
+  }> {
+    let added = 0;
+    let alreadyMember = 0;
+    const failed: Array<{ userName: string; groupName: string; error: string }> = [];
+    const BATCH_SIZE = 20;
+
+    for (let i = 0; i < assignments.length; i += BATCH_SIZE) {
+      const batch = assignments.slice(i, i + BATCH_SIZE);
+
+      const batchRequests = batch.map((a, index) => ({
+        id: `${i + index}`,
+        method: 'POST',
+        url: `/groups/${a.groupId}/members/$ref`,
+        body: {
+          '@odata.id': `https://graph.microsoft.com/v1.0/directoryObjects/${a.userId}`,
+        },
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      try {
+        const batchResponse = await this.client.api('/$batch').post({
+          requests: batchRequests,
+        });
+
+        for (let j = 0; j < batchResponse.responses.length; j++) {
+          const response = batchResponse.responses[j];
+          const a = batch[j];
+
+          if (response.status >= 200 && response.status < 300) {
+            added++;
+          } else if (response.status === 400 && response.body?.error?.message?.includes('already exist')) {
+            alreadyMember++;
+          } else {
+            const error = response.body?.error?.message || `HTTP ${response.status}`;
+            failed.push({ userName: a.userName, groupName: a.groupName, error });
+          }
+        }
+
+        if (i + BATCH_SIZE < assignments.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error: any) {
+        batch.forEach(a => {
+          failed.push({ userName: a.userName, groupName: a.groupName, error: error.message });
+        });
+      }
+    }
+
+    return { added, alreadyMember, failed };
+  }
 }
 
 // CLI support for direct execution

@@ -13,7 +13,7 @@ import fs from 'fs/promises';
 const ARRAY_FIELDS = new Set([
   'skills', 'interests', 'certifications', 'awards', 'projects',
   'educationalActivities', 'languages', 'publications', 'patents',
-  'responsibilities',
+  'responsibilities', 'groups',
 ]);
 
 // Fields that must be strings when present (after normalization)
