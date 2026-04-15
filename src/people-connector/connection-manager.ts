@@ -224,8 +224,10 @@ export class PeopleConnectionManager {
     try {
       await this.betaClient.api(`/external/connections/${this.connectionId}`).patch({
         enabledContentExperiences: 'search',
+        // Routes items directly to PCP instead of generic filtering (per Morten)
+        contentDomainCategoryName: 'people',
       });
-      console.log('✓ Enabled search content experience (Copilot/Search visibility)');
+      console.log('✓ Enabled search + contentDomainCategoryName: people');
     } catch (error: any) {
       console.warn(`⚠ Failed to enable search experience: ${error.message}`);
     }
