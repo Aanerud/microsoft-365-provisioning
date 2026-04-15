@@ -264,14 +264,21 @@ export class PeopleItemIngester {
       properties.addresses = csvRow.addresses
         .filter((a: any) => a && (a.detail || a.city))
         .map((a: any) => {
+          // Connector docs say personAddresses type must be Home, Work, or Other
+          // Map physicalAddressType enum values to connector-expected values
           if (a.detail?.type && typeof a.detail.type === 'string') {
-            a.detail.type = a.detail.type.toLowerCase();
+            const typeMap: Record<string, string> = {
+              'business': 'Work', 'Business': 'Work', 'work': 'Work',
+              'home': 'Home', 'Home': 'Home',
+              'other': 'Other', 'Other': 'Other',
+            };
+            a.detail.type = typeMap[a.detail.type] || a.detail.type;
           }
           return JSON.stringify(stripEmpty(a) || a);
         });
     } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
       // Fallback: build from flat CSV fields
-      const detail: any = { type: 'business' };
+      const detail: any = { type: 'Work' };
       if (csvRow.streetAddress) detail.street = csvRow.streetAddress;
       if (csvRow.city) detail.city = csvRow.city;
       if (csvRow.state) detail.state = csvRow.state;
