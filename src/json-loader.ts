@@ -251,9 +251,10 @@ function normalizePascalRecord(record: any): any {
   // Without removal they'd be detected as "custom connector properties".
   const consumedFields = [
     'mailNickName', 'firstName', 'lastName', 'address', 'phoneNumber',
-    'addresses', 'phones', 'emails', 'notes',
+    'phones', 'emails', 'notes',
     'anniversaries', 'websites', 'webAccounts',
     // 'positions' intentionally kept — used by item-ingester for personCurrentPosition with relatedPerson
+    // 'addresses' intentionally kept — source has proper itemAddress format with detail wrapper
   ];
   for (const f of consumedFields) {
     delete r[f];

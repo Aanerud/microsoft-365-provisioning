@@ -622,6 +622,7 @@ const INTERNAL_CSV_COLUMNS = new Set([
   'ManagerEmail', // Used for manager assignment (Option A)
   'licenses',    // Per-user license assignment (Option A)
   'positions',   // Used by personCurrentPosition composite (with relatedPerson)
+  'addresses',   // Used by personAddresses composite (itemAddress with detail)
   'groups',      // Entra ID group membership (Option A)
 ]);
 

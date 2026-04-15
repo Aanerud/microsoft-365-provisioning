@@ -45,6 +45,8 @@ const STANDARD_USER_FIELDS = new Set([
   'licenses',
   // Used by personCurrentPosition composite (positions array passed to item-ingester):
   'positions',
+  // Used by personAddresses composite (addresses array with detail wrapper):
+  'addresses',
   // Handled by Option A group membership (update-groups.ts), not connector:
   'groups',
 ]);

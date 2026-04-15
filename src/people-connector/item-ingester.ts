@@ -256,9 +256,15 @@ export class PeopleItemIngester {
       });
     }
 
-    // personAddresses → [{"type":"business","city":"...","countryOrRegion":"..."}] (only non-empty fields)
     // personAddresses → itemAddress: {"detail":{"type":"business","city":"..."},"displayName":"..."}
-    if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
+    if (Array.isArray(csvRow.addresses) && csvRow.addresses.length > 0) {
+      // Rich addresses from JSON — already in itemAddress format with detail wrapper
+      properties['addresses@odata.type'] = 'Collection(String)';
+      properties.addresses = csvRow.addresses
+        .filter((a: any) => a && (a.detail || a.city))
+        .map((a: any) => JSON.stringify(stripEmpty(a) || a));
+    } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
+      // Fallback: build from flat CSV fields
       const detail: any = { type: 'business' };
       if (csvRow.streetAddress) detail.street = csvRow.streetAddress;
       if (csvRow.city) detail.city = csvRow.city;
