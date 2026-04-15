@@ -259,10 +259,16 @@ export class PeopleItemIngester {
     // personAddresses → itemAddress: {"detail":{"type":"business","city":"..."},"displayName":"..."}
     if (Array.isArray(csvRow.addresses) && csvRow.addresses.length > 0) {
       // Rich addresses from JSON — already in itemAddress format with detail wrapper
+      // Fix: physicalAddressType enum must be lowercase (business, home, other)
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = csvRow.addresses
         .filter((a: any) => a && (a.detail || a.city))
-        .map((a: any) => JSON.stringify(stripEmpty(a) || a));
+        .map((a: any) => {
+          if (a.detail?.type && typeof a.detail.type === 'string') {
+            a.detail.type = a.detail.type.toLowerCase();
+          }
+          return JSON.stringify(stripEmpty(a) || a);
+        });
     } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
       // Fallback: build from flat CSV fields
       const detail: any = { type: 'business' };
