@@ -257,13 +257,17 @@ export class PeopleItemIngester {
     }
 
     // personAddresses → [{"type":"business","city":"...","countryOrRegion":"..."}] (only non-empty fields)
+    // personAddresses → itemAddress: {"detail":{"type":"business","city":"..."},"displayName":"..."}
     if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
-      const addr: any = { type: 'business' };
-      if (csvRow.streetAddress) addr.street = csvRow.streetAddress;
-      if (csvRow.city) addr.city = csvRow.city;
-      if (csvRow.state) addr.state = csvRow.state;
-      if (csvRow.country) addr.countryOrRegion = csvRow.country;
-      if (csvRow.postalCode) addr.postalCode = csvRow.postalCode;
+      const detail: any = { type: 'business' };
+      if (csvRow.streetAddress) detail.street = csvRow.streetAddress;
+      if (csvRow.city) detail.city = csvRow.city;
+      if (csvRow.state) detail.state = csvRow.state;
+      if (csvRow.country) detail.countryOrRegion = csvRow.country;
+      if (csvRow.postalCode) detail.postalCode = csvRow.postalCode;
+      const addr: any = { detail };
+      if (csvRow.officeLocation) addr.displayName = csvRow.officeLocation;
+      else if (csvRow.city) addr.displayName = csvRow.city;
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = [JSON.stringify(addr)];
     }
