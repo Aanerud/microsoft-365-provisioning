@@ -256,37 +256,30 @@ export class PeopleItemIngester {
       });
     }
 
-    // personAddresses → itemAddress: {"detail":{"type":"business","city":"..."},"displayName":"..."}
+    // personAddresses → flat physicalAddress (original working format from m365people22/23)
+    // NOTE: PCP accepts flat physicalAddress, NOT itemAddress with detail wrapper.
+    // The itemAddress.detail wrapper was tested and does NOT propagate to profiles.
     if (Array.isArray(csvRow.addresses) && csvRow.addresses.length > 0) {
-      // Rich addresses from JSON — already in itemAddress format with detail wrapper
-      // Fix: physicalAddressType enum must be lowercase (business, home, other)
+      // Rich addresses from JSON — extract detail (physicalAddress) from itemAddress wrapper
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = csvRow.addresses
         .filter((a: any) => a && (a.detail || a.city))
         .map((a: any) => {
-          // Connector docs say personAddresses type must be Home, Work, or Other
-          // Map physicalAddressType enum values to connector-expected values
-          if (a.detail?.type && typeof a.detail.type === 'string') {
-            const typeMap: Record<string, string> = {
-              'business': 'Work', 'Business': 'Work', 'work': 'Work',
-              'home': 'Home', 'Home': 'Home',
-              'other': 'Other', 'Other': 'Other',
-            };
-            a.detail.type = typeMap[a.detail.type] || a.detail.type;
+          // If wrapped in itemAddress format, extract the flat physicalAddress from detail
+          const flat = a.detail || a;
+          if (flat.type && typeof flat.type === 'string') {
+            flat.type = flat.type.toLowerCase();
           }
-          return JSON.stringify(stripEmpty(a) || a);
+          return JSON.stringify(stripEmpty(flat) || flat);
         });
     } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
       // Fallback: build from flat CSV fields
-      const detail: any = { type: 'Work' };
-      if (csvRow.streetAddress) detail.street = csvRow.streetAddress;
-      if (csvRow.city) detail.city = csvRow.city;
-      if (csvRow.state) detail.state = csvRow.state;
-      if (csvRow.country) detail.countryOrRegion = csvRow.country;
-      if (csvRow.postalCode) detail.postalCode = csvRow.postalCode;
-      const addr: any = { detail };
-      if (csvRow.officeLocation) addr.displayName = csvRow.officeLocation;
-      else if (csvRow.city) addr.displayName = csvRow.city;
+      const addr: any = { type: 'business' };
+      if (csvRow.streetAddress) addr.street = csvRow.streetAddress;
+      if (csvRow.city) addr.city = csvRow.city;
+      if (csvRow.state) addr.state = csvRow.state;
+      if (csvRow.country) addr.countryOrRegion = csvRow.country;
+      if (csvRow.postalCode) addr.postalCode = csvRow.postalCode;
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = [JSON.stringify(addr)];
     }
