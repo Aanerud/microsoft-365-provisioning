@@ -256,37 +256,25 @@ export class PeopleItemIngester {
       });
     }
 
-    // personAddresses → flat physicalAddress with ALL fields present (proven working format)
-    // CRITICAL: PCP requires all 6 physicalAddress fields, including empty strings.
-    // Stripping empty fields or adding non-standard fields (like "country") breaks propagation.
-    // Only use physicalAddress properties: type, street, city, state, countryOrRegion, postalCode
+    // personAddresses → physicalAddress, same format as position.detail.company.address (which works)
+    // Use stripEmpty and pass through source data — matches the proven working position address format
     if (Array.isArray(csvRow.addresses) && csvRow.addresses.length > 0) {
-      // Rich addresses from JSON — extract physicalAddress from itemAddress.detail
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = csvRow.addresses
         .filter((a: any) => a && (a.detail || a.city))
         .map((a: any) => {
           const src = a.detail || a;
-          return JSON.stringify({
-            type: 'business',
-            street: src.street || '',
-            city: src.city || '',
-            state: src.state || '',
-            countryOrRegion: src.countryOrRegion || src.country || '',
-            postalCode: src.postalCode || '',
-          });
+          return JSON.stringify(stripEmpty(src) || src);
         });
     } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
-      // Fallback: build from flat CSV fields
+      const addr: any = { type: 'business' };
+      if (csvRow.streetAddress) addr.street = csvRow.streetAddress;
+      if (csvRow.city) addr.city = csvRow.city;
+      if (csvRow.state) addr.state = csvRow.state;
+      if (csvRow.country) addr.countryOrRegion = csvRow.country;
+      if (csvRow.postalCode) addr.postalCode = csvRow.postalCode;
       properties['addresses@odata.type'] = 'Collection(String)';
-      properties.addresses = [JSON.stringify({
-        type: 'business',
-        street: csvRow.streetAddress || '',
-        city: csvRow.city || '',
-        state: csvRow.state || '',
-        countryOrRegion: csvRow.country || '',
-        postalCode: csvRow.postalCode || '',
-      })];
+      properties.addresses = [JSON.stringify(addr)];
     }
 
     // personEmails → [{"address":"...","type":"main"}]
