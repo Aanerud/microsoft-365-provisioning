@@ -256,32 +256,37 @@ export class PeopleItemIngester {
       });
     }
 
-    // personAddresses → flat physicalAddress (original working format from m365people22/23)
-    // NOTE: PCP accepts flat physicalAddress, NOT itemAddress with detail wrapper.
-    // The itemAddress.detail wrapper was tested and does NOT propagate to profiles.
+    // personAddresses → flat physicalAddress with ALL fields present (proven working format)
+    // CRITICAL: PCP requires all 6 physicalAddress fields, including empty strings.
+    // Stripping empty fields or adding non-standard fields (like "country") breaks propagation.
+    // Only use physicalAddress properties: type, street, city, state, countryOrRegion, postalCode
     if (Array.isArray(csvRow.addresses) && csvRow.addresses.length > 0) {
-      // Rich addresses from JSON — extract detail (physicalAddress) from itemAddress wrapper
+      // Rich addresses from JSON — extract physicalAddress from itemAddress.detail
       properties['addresses@odata.type'] = 'Collection(String)';
       properties.addresses = csvRow.addresses
         .filter((a: any) => a && (a.detail || a.city))
         .map((a: any) => {
-          // If wrapped in itemAddress format, extract the flat physicalAddress from detail
-          const flat = a.detail || a;
-          if (flat.type && typeof flat.type === 'string') {
-            flat.type = flat.type.toLowerCase();
-          }
-          return JSON.stringify(stripEmpty(flat) || flat);
+          const src = a.detail || a;
+          return JSON.stringify({
+            type: 'business',
+            street: src.street || '',
+            city: src.city || '',
+            state: src.state || '',
+            countryOrRegion: src.countryOrRegion || src.country || '',
+            postalCode: src.postalCode || '',
+          });
         });
     } else if (csvRow.streetAddress || csvRow.city || csvRow.state || csvRow.country || csvRow.postalCode) {
       // Fallback: build from flat CSV fields
-      const addr: any = { type: 'business' };
-      if (csvRow.streetAddress) addr.street = csvRow.streetAddress;
-      if (csvRow.city) addr.city = csvRow.city;
-      if (csvRow.state) addr.state = csvRow.state;
-      if (csvRow.country) addr.countryOrRegion = csvRow.country;
-      if (csvRow.postalCode) addr.postalCode = csvRow.postalCode;
       properties['addresses@odata.type'] = 'Collection(String)';
-      properties.addresses = [JSON.stringify(addr)];
+      properties.addresses = [JSON.stringify({
+        type: 'business',
+        street: csvRow.streetAddress || '',
+        city: csvRow.city || '',
+        state: csvRow.state || '',
+        countryOrRegion: csvRow.country || '',
+        postalCode: csvRow.postalCode || '',
+      })];
     }
 
     // personEmails → [{"address":"...","type":"main"}]
