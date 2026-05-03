@@ -728,9 +728,9 @@ npm run option-b:ingest -- --csv config/agents-template.csv
 ```json
 {
   "items": [
-    "person-ingrid-johansen-a830edad9050849coep9vqp9bog-onmicrosoft-com",
-    "person-ola-nordmann-a830edad9050849coep9vqp9bog-onmicrosoft-com",
-    "person-lars-hansen-a830edad9050849coep9vqp9bog-onmicrosoft-com"
+    "person-ingrid-johansen-yourdomain-onmicrosoft-com",
+    "person-ola-nordmann-yourdomain-onmicrosoft-com",
+    "person-lars-hansen-yourdomain-onmicrosoft-com"
   ],
   "lastUpdated": "2026-01-22T18:23:10.821Z"
 }

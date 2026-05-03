@@ -23,8 +23,8 @@ const betaClient = Client.initWithMiddleware({
 });
 
 const itemsToDelete = [
-  'person-lars-hansen-a830edad9050849coep9vqp9bog-onmicrosoft-com',
-  'person-kari-andersen-a830edad9050849coep9vqp9bog-onmicrosoft-com'
+  'person-example-user-yourdomain-onmicrosoft-com',
+  'person-another-user-yourdomain-onmicrosoft-com'
 ];
 
 try {

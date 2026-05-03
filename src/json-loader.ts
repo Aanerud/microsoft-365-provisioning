@@ -8,6 +8,7 @@
  * PascalCase format is auto-detected and normalized to camelCase before downstream code sees it.
  */
 import fs from 'fs/promises';
+import { readFileSync } from 'fs';
 
 // Fields that must be arrays when present (after normalization)
 const ARRAY_FIELDS = new Set([
@@ -73,11 +74,18 @@ function deepNormalizeKeys(obj: any): any {
   return result;
 }
 
+export type PipelineMode = 'optionA' | 'optionB' | 'groups';
+
 /**
  * Normalize a PascalCase record into the camelCase format the pipeline expects.
  * Runs AFTER deepNormalizeKeys() — all keys are already camelCase.
+ *
+ * When pipeline is 'optionB', skips mutations that destroy rich entity data
+ * needed by the Graph Connector (anniversaries, emails, phones, webAccounts,
+ * notes, metadata stripping, fieldsOfStudy coercion, isCurrent injection).
+ * Option A and groups pipelines keep all existing behavior.
  */
-function normalizePascalRecord(record: any): any {
+function normalizePascalRecord(record: any, pipeline: PipelineMode = 'optionA'): any {
   const domain = process.env.USER_DOMAIN || 'yourdomain.onmicrosoft.com';
   const r = { ...record };
 
@@ -134,14 +142,14 @@ function normalizePascalRecord(record: any): any {
     r.mobilePhone = r.phoneNumber;
     delete r.phoneNumber;
   }
-  if (Array.isArray(r.phones) && !r.businessPhones) {
+  if (pipeline !== 'optionB' && Array.isArray(r.phones) && !r.businessPhones) {
     r.businessPhones = r.phones
       .filter((p: any) => p && p.number)
       .map((p: any) => p.number);
   }
 
   // ── Notes → aboutMe ──
-  if (Array.isArray(r.notes) && r.notes.length > 0 && !r.aboutMe) {
+  if (pipeline !== 'optionB' && Array.isArray(r.notes) && r.notes.length > 0 && !r.aboutMe) {
     const first = r.notes[0];
     if (typeof first === 'object' && first?.detail?.content) {
       r.aboutMe = first.detail.content;
@@ -151,7 +159,7 @@ function normalizePascalRecord(record: any): any {
   }
 
   // ── Anniversaries → employeeHireDate ──
-  if (Array.isArray(r.anniversaries) && !r.employeeHireDate) {
+  if (pipeline !== 'optionB' && Array.isArray(r.anniversaries) && !r.employeeHireDate) {
     const workAnniversary = r.anniversaries.find(
       (a: any) => a && (a.type === 'work' || a.type === 'Work')
     );
@@ -161,8 +169,8 @@ function normalizePascalRecord(record: any): any {
   }
 
   // ── Emails ──
-  // Extract mail from Emails array if present
-  if (Array.isArray(r.emails) && r.emails.length > 0 && !r.mail) {
+  // Extract mail from Emails array if present (Option A needs flat mail field)
+  if (pipeline !== 'optionB' && Array.isArray(r.emails) && r.emails.length > 0 && !r.mail) {
     const primary = r.emails.find((e: any) => e?.address);
     if (primary) r.mail = primary.address;
   }
@@ -183,7 +191,7 @@ function normalizePascalRecord(record: any): any {
   }
 
   // ── Education: fieldsOfStudy string → array ──
-  if (Array.isArray(r.educationalActivities)) {
+  if (pipeline !== 'optionB' && Array.isArray(r.educationalActivities)) {
     for (const edu of r.educationalActivities) {
       if (edu?.program?.fieldsOfStudy && typeof edu.program.fieldsOfStudy === 'string') {
         edu.program.fieldsOfStudy = edu.program.fieldsOfStudy
@@ -193,13 +201,8 @@ function normalizePascalRecord(record: any): any {
     }
   }
 
-  // ── Products → stringify for Path B custom property ──
-  if (Array.isArray(r.products)) {
-    r.products = r.products
-      .filter((p: any) => p && p.name)
-      .map((p: any) => p.name)
-      .join(', ');
-  }
+  // Collection rendering moved out of this function — see renderCollectionProperties().
+  // Runs for both PascalCase and camelCase inputs via loadRowsFromJson().
 
   // ── Positions: pass through as-is ──
   // If the JSON has positions with relatedPerson (manager, colleagues) already structured,
@@ -207,7 +210,7 @@ function normalizePascalRecord(record: any): any {
   // that's the data science team's responsibility to structure correctly.
   // Flat top-level fields (DeploymentManager, Sponsor, etc.) stay as custom connector properties.
   if (Array.isArray(r.positions) && r.positions.length > 0) {
-    r.positions[0].isCurrent = true;
+    if (pipeline !== 'optionB') r.positions[0].isCurrent = true;
 
     // Fix relatedPerson UPNs: rewrite non-tenant domains to USER_DOMAIN
     // The data science team may use company emails (fabrikam.com) but PCP needs tenant UPNs
@@ -226,42 +229,173 @@ function normalizePascalRecord(record: any): any {
     }
   }
 
-  // ── Strip PCP metadata from profile arrays ──
-  const profileArrays = [
-    'skills', 'interests', 'certifications', 'awards', 'projects',
-    'educationalActivities', 'languages', 'publications', 'patents',
-    'responsibilities', 'addresses', 'phones', 'emails', 'positions',
-    'websites', 'webAccounts', 'anniversaries',
-  ];
-  for (const field of profileArrays) {
-    if (Array.isArray(r[field])) {
-      r[field] = r[field].map((item: any) => {
-        if (typeof item !== 'object' || item === null) return item;
-        const cleaned: any = {};
-        for (const [k, v] of Object.entries(item)) {
-          if (!STRIP_FIELDS.has(k)) cleaned[k] = v;
-        }
-        return cleaned;
-      });
+  // ── Strip PCP metadata from profile arrays (Option A only) ──
+  // Option B passes through metadata fields — Graph ignores unknown nested fields
+  // in JSON-serialized entity values. Stripping is only needed for Option A where
+  // flat fields go to the Entra User API.
+  if (pipeline !== 'optionB') {
+    const profileArrays = [
+      'skills', 'interests', 'certifications', 'awards', 'projects',
+      'educationalActivities', 'languages', 'publications', 'patents',
+      'responsibilities', 'addresses', 'phones', 'emails', 'positions',
+      'websites', 'webAccounts', 'anniversaries',
+    ];
+    for (const field of profileArrays) {
+      if (Array.isArray(r[field])) {
+        r[field] = r[field].map((item: any) => {
+          if (typeof item !== 'object' || item === null) return item;
+          const cleaned: any = {};
+          for (const [k, v] of Object.entries(item)) {
+            if (!STRIP_FIELDS.has(k)) cleaned[k] = v;
+          }
+          return cleaned;
+        });
+      }
     }
   }
 
   // ── Cleanup: remove fields consumed by normalization ──
   // These were already mapped to their camelCase equivalents above.
   // Without removal they'd be detected as "custom connector properties".
-  const consumedFields = [
+  // Option B keeps rich arrays (emails, phones, anniversaries, etc.) intact.
+  const consumedFieldsCommon = [
     'mailNickName', 'firstName', 'lastName', 'address', 'phoneNumber',
+  ];
+  const consumedFieldsOptionA = [
     'phones', 'emails', 'notes',
     'anniversaries', 'websites', 'webAccounts',
-    // 'positions' intentionally kept — used by item-ingester for personCurrentPosition with relatedPerson
-    // 'addresses' intentionally kept — source has proper itemAddress format with detail wrapper
   ];
-  for (const f of consumedFields) {
+  for (const f of consumedFieldsCommon) {
     delete r[f];
+  }
+  if (pipeline !== 'optionB') {
+    for (const f of consumedFieldsOptionA) {
+      delete r[f];
+    }
   }
   // Keep `licenses` — consumed by license-resolver.ts during provisioning
 
   return r;
+}
+
+// ─── Collection Property Renderer ───────────────────────────────────────────
+
+/**
+ * Render the `products` field (when present as array-of-objects) into a Path-B
+ * safe single-string YAML representation. The schema `description` field tells
+ * Copilot what the property means; the value here is pure data.
+ *
+ * Output (YAML — recommended by Microsoft docs for complex custom properties):
+ *
+ *   - name: Echo Vault
+ *     model: Model A
+ *     gtin: 96128715782278
+ *   - name: Falcon Ridge
+ *     model: Model Y
+ *     gtin: 95441323966177
+ *
+ * Why a single string: connector custom properties without a people-data label
+ * use Path B deserialization, which expects `string` only. Sending array or
+ * stringCollection crashes the whole connection.
+ *
+ * Mutates the record in place. Runs for every record regardless of whether the
+ * PascalCase normalizer ran — so camelCase inputs also get rendered. Safe to
+ * call on already-rendered input (non-array products bypass).
+ */
+export interface PropertyDefinition {
+  name: string;
+  type: 'string' | 'collection';
+  description?: string;
+}
+
+/**
+ * Load property definitions from the sidecar properties config file.
+ */
+export function loadPropertyDefinitions(propertiesPath: string): PropertyDefinition[] {
+  try {
+    const content = readFileSync(propertiesPath, 'utf-8');
+    const defs = JSON.parse(content);
+    if (!Array.isArray(defs)) return [];
+    return defs;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Extract collection field names (camelCased) from property definitions.
+ */
+export function getCollectionFieldNames(defs: PropertyDefinition[]): string[] {
+  return defs
+    .filter(d => d.type === 'collection')
+    .map(d => d.name[0].toLowerCase() + d.name.slice(1));
+}
+
+/**
+ * Build a descriptions map from property definitions (camelCase name → description).
+ */
+export function buildDescriptionsMap(defs: PropertyDefinition[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const d of defs) {
+    if (d.description) {
+      map[d.name[0].toLowerCase() + d.name.slice(1)] = d.description;
+    }
+  }
+  return map;
+}
+
+function sanitizeYaml(s: string): string {
+  return s.replace(/[\r\n ]/g, ' ');
+}
+
+export function renderCollectionProperties(r: any, collectionFields: string[]): void {
+  if (!r) return;
+  for (const fieldName of collectionFields) {
+    renderOneCollection(r, fieldName);
+  }
+}
+
+function renderOneCollection(r: any, fieldName: string): void {
+  const val = r[fieldName];
+  if (!Array.isArray(val)) return;
+
+  const items: string[] = [];
+  for (const entry of val) {
+    if (typeof entry !== 'object' || entry === null) continue;
+
+    const pairs = Object.entries(entry)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => ({ key: k.toLowerCase(), val: sanitizeYaml(String(v)) }));
+
+    if (pairs.length === 0) continue;
+
+    let item = `- ${pairs[0].key}: ${pairs[0].val}`;
+    for (let i = 1; i < pairs.length; i++) {
+      item += `\n  ${pairs[i].key}: ${pairs[i].val}`;
+    }
+    items.push(item);
+  }
+
+  if (items.length === 0) {
+    r[fieldName] = '';
+    return;
+  }
+
+  let out = items.join('\n');
+
+  // Graph Connector string-property soft cap ~8KB.
+  const MAX_BYTES = 8192;
+  if (Buffer.byteLength(out, 'utf-8') > MAX_BYTES) {
+    let truncated = out.slice(0, 8000);
+    const lastNl = truncated.lastIndexOf('\n');
+    if (lastNl > 0) truncated = truncated.slice(0, lastNl);
+    out = truncated + '\n\n[TRUNCATED]';
+    console.warn(
+      `[renderCollection] ${fieldName} for ${r.mailNickName || r.email || 'unknown'} exceeded 8KB, truncated`
+    );
+  }
+
+  r[fieldName] = out;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -269,8 +403,13 @@ function normalizePascalRecord(record: any): any {
 /**
  * Load rows from a JSON file. Supports both camelCase and PascalCase formats.
  * PascalCase is auto-detected and normalized to camelCase.
+ *
+ * pipeline controls which mutations run:
+ * - 'optionA' (default): full normalization for Entra User API
+ * - 'optionB': preserves rich entity data for Graph Connector pass-through
+ * - 'groups': same as optionA
  */
-export async function loadRowsFromJson(jsonPath: string): Promise<any[]> {
+export async function loadRowsFromJson(jsonPath: string, pipeline: PipelineMode = 'optionA'): Promise<any[]> {
   const content = await fs.readFile(jsonPath, 'utf-8');
   let records: any;
 
@@ -288,8 +427,12 @@ export async function loadRowsFromJson(jsonPath: string): Promise<any[]> {
   if (detectPascalCaseFormat(records)) {
     console.log(`Detected PascalCase format (${records.length} records), normalizing to camelCase...`);
 
-    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r)));
+    records = records.map(r => normalizePascalRecord(deepNormalizeKeys(r), pipeline));
   }
+
+  // NOTE: Collection properties (type=collection in properties config) are
+  // rendered by the caller (enrich-connector.ts) using renderCollectionProperties().
+  // This keeps loadRowsFromJson generic for both Option A and Option B callers.
 
   // Validate email on every record (after normalization)
   for (let i = 0; i < records.length; i++) {

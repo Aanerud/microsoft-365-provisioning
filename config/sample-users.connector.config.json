@@ -1,0 +1,164 @@
+[
+  {
+    "MailNickName": "alex.r",
+    "Skills": [
+      { "DisplayName": "Cloud Architecture", "Proficiency": "expert", "Categories": ["Technical"], "CollaborationTags": ["azure", "infrastructure"], "AllowedAudiences": "organization" },
+      { "DisplayName": "TypeScript", "Proficiency": "expert", "Categories": ["Technical"], "AllowedAudiences": "organization" },
+      { "DisplayName": "Microsoft Graph API", "Proficiency": "expert", "Categories": ["Technical"], "CollaborationTags": ["graph", "m365"], "AllowedAudiences": "organization" },
+      { "DisplayName": "Team Leadership", "Proficiency": "expert", "Categories": ["Management"], "AllowedAudiences": "organization" },
+      { "DisplayName": "System Design", "Proficiency": "advancedProfessional", "Categories": ["Technical"], "AllowedAudiences": "organization" }
+    ],
+    "Languages": [
+      { "DisplayName": "English", "Tag": "en", "Reading": "native", "Spoken": "native", "Written": "native", "AllowedAudiences": "organization" },
+      { "DisplayName": "Spanish", "Tag": "es", "Reading": "fullProfessional", "Spoken": "fullProfessional", "Written": "limitedWorking", "AllowedAudiences": "organization" }
+    ],
+    "Certifications": [
+      { "DisplayName": "AWS Solutions Architect Professional", "IssuingAuthority": "Amazon Web Services", "IssuedDate": "2023-06-15", "AllowedAudiences": "organization" }
+    ],
+    "EducationalActivities": [
+      {
+        "StartMonthYear": "2006-09",
+        "EndMonthYear": "2010-06",
+        "Institution": { "DisplayName": "University of Washington", "Location": { "City": "Seattle", "State": "WA", "Country": "United States" } },
+        "Program": { "DisplayName": "Computer Science", "Abbreviation": "BS", "FieldsOfStudy": "Computer Science" },
+        "AllowedAudiences": "organization"
+      }
+    ],
+    "Positions": [
+      {
+        "Categories": ["Executive"],
+        "Detail": {
+          "Company": {
+            "DisplayName": "Contoso",
+            "Address": { "Street": "1 Contoso Way", "City": "Seattle", "State": "WA", "PostalCode": "98101", "Country": "United States", "CountryOrRegion": "United States", "Type": "business" },
+            "Department": "Engineering",
+            "OfficeLocation": "Seattle, WA",
+            "WebUrl": "https://www.contoso.com"
+          },
+          "JobTitle": "CTO",
+          "Description": "Leading Engineering",
+          "Role": "CTO",
+          "StartMonthYear": "2020-01-15"
+        },
+        "AllowedAudiences": "organization",
+        "colleagues": [
+          { "displayName": "Mei Chen", "userPrincipalName": "mei.c@contoso.com", "relationship": "directReport" }
+        ],
+        "isCurrent": true
+      }
+    ],
+    "Interests": [
+      { "DisplayName": "Distributed Systems", "AllowedAudiences": "organization" },
+      { "DisplayName": "Open Source", "AllowedAudiences": "organization" }
+    ],
+    "Awards": [
+      { "DisplayName": "Microsoft MVP - Azure", "IssuedDate": "2022-01-01", "AllowedAudiences": "organization" }
+    ],
+    "Anniversaries": [
+      { "Type": "birthday", "Date": "1988-03-22", "AllowedAudiences": "organization" }
+    ],
+    "Emails": [
+      { "Address": "alex.r@contoso.com", "Type": "work", "AllowedAudiences": "organization" }
+    ],
+    "Phones": [
+      { "Number": "+1-206-555-0100", "Type": "business", "AllowedAudiences": "organization" }
+    ],
+    "Notes": [
+      { "Detail": { "ContentType": "text", "Content": "Passionate about cloud architecture and making developer tools that people actually enjoy using." } }
+    ],
+    "WebAccounts": [],
+    "Websites": [],
+    "Products": [{ "Name": "Microsoft 365", "Model": "Enterprise", "GTIN": "" }],
+    "TerritoryTier1": "Americas",
+    "TerritoryTier2": "North America",
+    "TerritoryTier3": "Pacific Northwest",
+    "JobFamilyGroupName": "Engineering",
+    "JobFamilyName": "Software Engineering",
+    "WorkModality": "Hybrid"
+  },
+  {
+    "MailNickName": "mei.c",
+    "Skills": [
+      { "DisplayName": "React", "Proficiency": "expert", "Categories": ["Technical"], "AllowedAudiences": "organization" },
+      { "DisplayName": "Python", "Proficiency": "advancedProfessional", "Categories": ["Technical"], "AllowedAudiences": "organization" },
+      { "DisplayName": "Graph Connectors", "Proficiency": "expert", "Categories": ["Technical"], "CollaborationTags": ["copilot", "search"], "AllowedAudiences": "organization" }
+    ],
+    "Languages": [
+      { "DisplayName": "English", "Tag": "en", "Reading": "native", "Spoken": "native", "Written": "native", "AllowedAudiences": "organization" },
+      { "DisplayName": "Norwegian", "Tag": "nb", "Reading": "fullProfessional", "Spoken": "professionalWorking", "Written": "limitedWorking", "AllowedAudiences": "organization" },
+      { "DisplayName": "Mandarin", "Tag": "zh", "Reading": "native", "Spoken": "native", "Written": "native", "AllowedAudiences": "organization" }
+    ],
+    "Certifications": [
+      { "DisplayName": "Microsoft Certified: Azure Developer Associate", "IssuingAuthority": "Microsoft", "IssuedDate": "2024-02-10", "AllowedAudiences": "organization" }
+    ],
+    "EducationalActivities": [
+      {
+        "StartMonthYear": "2014-09",
+        "EndMonthYear": "2018-06",
+        "Institution": { "DisplayName": "Tsinghua University", "Location": { "City": "Beijing", "Country": "China" } },
+        "Program": { "DisplayName": "Software Engineering", "Abbreviation": "BS", "FieldsOfStudy": "Software Engineering" },
+        "AllowedAudiences": "organization"
+      },
+      {
+        "StartMonthYear": "2019-08",
+        "EndMonthYear": "2021-05",
+        "Institution": { "DisplayName": "University of Oslo", "Location": { "City": "Oslo", "Country": "Norway" } },
+        "Program": { "DisplayName": "Informatics", "Abbreviation": "MSc", "FieldsOfStudy": "Informatics" },
+        "AllowedAudiences": "organization"
+      }
+    ],
+    "Positions": [
+      {
+        "Categories": ["Engineering"],
+        "Detail": {
+          "Company": {
+            "DisplayName": "Contoso",
+            "Address": { "Street": "Aker Brygge 1", "City": "Oslo", "PostalCode": "0250", "Country": "Norway", "CountryOrRegion": "Norway", "Type": "business" },
+            "Department": "Engineering",
+            "OfficeLocation": "Oslo, Norway",
+            "WebUrl": "https://www.contoso.com"
+          },
+          "JobTitle": "Senior Software Engineer",
+          "Description": "Working in Engineering",
+          "Role": "Senior Software Engineer",
+          "StartMonthYear": "2021-08-01"
+        },
+        "AllowedAudiences": "organization",
+        "isCurrent": true
+      }
+    ],
+    "Interests": [
+      { "DisplayName": "Machine Learning", "AllowedAudiences": "organization" },
+      { "DisplayName": "Photography", "AllowedAudiences": "organization" }
+    ],
+    "Projects": [
+      { "DisplayName": "Copilot People Search Integration", "AllowedAudiences": "organization" }
+    ],
+    "Publications": [
+      { "DisplayName": "Building Searchable People Data with Graph Connectors", "Publisher": "Microsoft Tech Community", "PublishedDate": "2025-11-01", "WebUrl": "https://techcommunity.microsoft.com", "AllowedAudiences": "organization" }
+    ],
+    "Anniversaries": [
+      { "Type": "birthday", "Date": "1996-07-14", "AllowedAudiences": "organization" }
+    ],
+    "Emails": [
+      { "Address": "mei.c@contoso.com", "Type": "work", "AllowedAudiences": "organization" }
+    ],
+    "Phones": [
+      { "Number": "+47-912-34-567", "Type": "mobile", "AllowedAudiences": "organization" }
+    ],
+    "Notes": [
+      { "Detail": { "ContentType": "text", "Content": "Trilingual engineer focused on making Microsoft 365 Copilot smarter about people through Graph Connectors." } }
+    ],
+    "WebAccounts": [
+      { "Description": "GitHub", "WebUrl": "https://github.com/meichen" }
+    ],
+    "Websites": [],
+    "Products": [{ "Name": "Microsoft Teams", "Model": "Enterprise", "GTIN": "" }],
+    "TerritoryTier1": "EMEA",
+    "TerritoryTier2": "Northern Europe",
+    "TerritoryTier3": "Nordics",
+    "JobFamilyGroupName": "Engineering",
+    "JobFamilyName": "Software Engineering",
+    "WorkModality": "Remote"
+  }
+]

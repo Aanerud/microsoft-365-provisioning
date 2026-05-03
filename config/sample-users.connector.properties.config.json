@@ -1,0 +1,37 @@
+[
+  {
+    "name": "JobFamilyGroupName",
+    "type": "string",
+    "description": "The job family group name of the user"
+  },
+  {
+    "name": "JobFamilyName",
+    "type": "string",
+    "description": "The job family name of the user"
+  },
+  {
+    "name": "WorkModality",
+    "type": "string",
+    "description": "The work modality of the user (Remote, Hybrid, OnSite)"
+  },
+  {
+    "name": "Products",
+    "type": "collection",
+    "description": "List of products associated with the user"
+  },
+  {
+    "name": "TerritoryTier1",
+    "type": "string",
+    "description": "The territory information for the user, level 1 (e.g., Americas, EMEA, APAC)"
+  },
+  {
+    "name": "TerritoryTier2",
+    "type": "string",
+    "description": "The territory information for the user, level 2"
+  },
+  {
+    "name": "TerritoryTier3",
+    "type": "string",
+    "description": "The territory information for the user, level 3"
+  }
+]

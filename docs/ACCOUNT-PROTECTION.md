@@ -16,7 +16,7 @@ Protected email patterns using wildcards:
 - `root@*` - Any email starting with "root@"
 - `systemadmin@*` - Any email starting with "systemadmin@"
 
-**Example**: `admin@a830edad9050849coep9vqp9bog.onmicrosoft.com` is automatically protected.
+**Example**: `admin@yourdomain.onmicrosoft.com` is automatically protected.
 
 ### 2. Explicit Exclusion List
 
@@ -84,7 +84,7 @@ When protected accounts are detected:
 
 The following 1 account(s) are protected and will NOT be DELETEd:
 
-1. admin@a830edad9050849coep9vqp9bog.onmicrosoft.com
+1. admin@yourdomain.onmicrosoft.com
    Reason: Email matches protected pattern
    Role: Global Administrator
 

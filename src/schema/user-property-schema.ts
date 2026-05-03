@@ -624,6 +624,15 @@ const INTERNAL_CSV_COLUMNS = new Set([
   'positions',   // Used by personCurrentPosition composite (with relatedPerson)
   'addresses',   // Used by personAddresses composite (itemAddress with detail)
   'groups',      // Entra ID group membership (Option A)
+  // Preserved rich arrays (Option B pass-through) — handled by item-ingester
+  // composite handlers, not as custom properties. These are the config-file names
+  // for data that maps to labeled people data properties.
+  'anniversaries', // → personAnniversaries (schema field: birthday)
+  'emails',        // → personEmails (composite handler)
+  'phones',        // → personPhones (composite handler)
+  'webAccounts',   // → personWebAccounts (composite handler)
+  'notes',         // → personNote (schema field: aboutMe)
+  'websites',      // → personWebSite (schema field: mySite)
 ]);
 
 /**

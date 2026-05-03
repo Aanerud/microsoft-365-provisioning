@@ -1,10 +1,11 @@
 import { getOptionBProperties, getPeopleDataMapping, getCustomProperties } from '../schema/user-property-schema.js';
 
-// All 13 official people data labels from Microsoft docs.
+// All 18 people data labels from Microsoft docs.
 // Every property with an official label MUST use that label (Path A deserialization).
 // Path A stores values as JsonElement — safely handles string and stringCollection.
-// Reference: docs/MicrosoftDocs/build-connectors-with-people-data.md
-const ENABLED_LABELS = new Set([
+// MS docs: isQueryable, isRefinable, isRetrievable, isSearchable are ALL IGNORED
+// for people connectors. All data about a person is indexed by default.
+export const ENABLED_LABELS = new Set([
   // Group 1: Option B native (single CSV column → entity)
   'personSkills',         // stringCollection → skillProficiency
   'personNote',           // string           → personAnnotation
@@ -28,12 +29,6 @@ const ENABLED_LABELS = new Set([
   'personPatents',               // stringCollection → itemPatent
 ]);
 
-// Custom properties: searchable by Copilot/Search but not mapped to profile cards.
-// CRITICAL: Must be type 'string' only (Path B deserialization).
-const CUSTOM_PROPERTIES: Array<{ name: string; type: 'string' | 'stringCollection' }> = [
-  { name: 'VTeam', type: 'string' },
-];
-
 const PROPERTY_NAME_REGEX = /^[A-Za-z0-9]+$/;
 const MAX_PROPERTY_NAME_LENGTH = 32;
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
@@ -56,8 +51,11 @@ function assertValidPropertyName(name: string): void {
 export class PeopleSchemaBuilder {
   /**
    * Build schema with people data labels + custom searchable properties.
+   * descriptions is an optional map of custom property name → description string.
+   * When present, descriptions are included in the schema per Microsoft docs
+   * (helps Copilot reason about custom fields).
    */
-  static buildPeopleSchema(csvColumns?: string[]): any[] {
+  static buildPeopleSchema(csvColumns: string[], descriptions?: Record<string, string>): any[] {
     const properties = [];
     const peopleDataMapping = getPeopleDataMapping();
     const optionBProps = getOptionBProperties();
@@ -71,15 +69,6 @@ export class PeopleSchemaBuilder {
     });
 
     // Labeled properties (Copilot-searchable via people data labels)
-    // Some labels need isQueryable/isSearchable/isRetrievable set to false
-    const NON_SEARCHABLE_LABELS = new Set([
-      'personEducationalActivities',
-      'personInterests',
-      'personLanguages',
-      'personPublications',
-      'personPatents',
-    ]);
-
     for (const prop of optionBProps) {
       const label = peopleDataMapping.get(prop.name);
       if (!label || !ENABLED_LABELS.has(label)) {
@@ -90,19 +79,11 @@ export class PeopleSchemaBuilder {
       const overrideType = LABEL_TYPE_OVERRIDES.get(label);
       const schemaType = overrideType ?? (prop.type === 'array' ? 'stringCollection' : 'string');
 
-      const entry: any = {
+      properties.push({
         name: prop.name,
         type: schemaType,
         labels: [label],
-      };
-
-      if (NON_SEARCHABLE_LABELS.has(label)) {
-        entry.isQueryable = false;
-        entry.isSearchable = false;
-        entry.isRetrievable = false;
-      }
-
-      properties.push(entry);
+      });
     }
 
     // Composite labeled properties (data from multiple Option A CSV columns)
@@ -123,20 +104,23 @@ export class PeopleSchemaBuilder {
     }
 
     // Custom properties (searchable, no people data label — string only, Path B)
-    // Dynamic from CSV when available, hardcoded fallback otherwise
-    const customNames = csvColumns
-      ? getCustomProperties(csvColumns)
-      : CUSTOM_PROPERTIES.map(p => p.name);
+    // Dynamically detected from config columns. We are a slave to the config —
+    // whatever top-level columns aren't in the standard schema become customs.
+    const customNames = getCustomProperties(csvColumns);
 
     for (const name of customNames) {
       assertValidPropertyName(name);
-      properties.push({
+      const entry: any = {
         name,
         type: 'string',  // MUST be string only (Path B deserialization)
         isSearchable: true,
         isQueryable: true,
         isRetrievable: true,
-      });
+      };
+      if (descriptions?.[name]) {
+        entry.description = descriptions[name];
+      }
+      properties.push(entry);
     }
 
     return properties;
@@ -144,10 +128,9 @@ export class PeopleSchemaBuilder {
 
   /**
    * Get the list of custom property names configured for the connector.
+   * Dynamically detected from config columns — no hardcoded fallback.
    */
-  static getCustomPropertyNames(csvColumns?: string[]): string[] {
-    return csvColumns
-      ? getCustomProperties(csvColumns)
-      : CUSTOM_PROPERTIES.map(p => p.name);
+  static getCustomPropertyNames(csvColumns: string[]): string[] {
+    return getCustomProperties(csvColumns);
   }
 }

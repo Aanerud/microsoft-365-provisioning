@@ -1,6 +1,6 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { getOptionBProperties } from '../schema/user-property-schema.js';
-import { PeopleSchemaBuilder } from './schema-builder.js';
+import { PeopleSchemaBuilder, ENABLED_LABELS } from './schema-builder.js';
 import { Logger } from '../utils/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -10,29 +10,6 @@ const MAX_RETRIES = 6;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30000;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
-
-// Must match ENABLED_LABELS in schema-builder.ts
-const ENABLED_LABELS = new Set([
-  'personSkills',
-  'personNote',
-  'personCertifications',
-  'personProjects',
-  'personAwards',
-  'personAnniversaries',
-  'personWebSite',
-  'personName',
-  'personCurrentPosition',
-  'personAddresses',
-  'personEmails',
-  'personPhones',
-  'personWebAccounts',
-  // Group 3: Additional people data labels
-  'personEducationalActivities',
-  'personInterests',
-  'personLanguages',
-  'personPublications',
-  'personPatents',
-]);
 
 const LABEL_TYPE_OVERRIDES = new Map<string, 'string' | 'stringCollection'>([
   ['personAnniversaries', 'stringCollection'],
@@ -82,6 +59,9 @@ function stripEmpty(obj: any): any {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+// normalizeMonthYear and normalizePositionDates removed.
+// MS Graph Date type accepts YYYY-MM-DD (year+month+day). Pass through as-is.
+
 function serializeDisplayNameItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
     return JSON.stringify(stripEmpty(item) || item);
@@ -105,10 +85,11 @@ function serializeInterestItem(item: any): string {
 }
 
 // educationalActivity entity: institution (institutionData), program (educationalActivityDetail), dates
-// PCP rule: fieldsOfStudy, activities, awards should be arrays (PCP uses JsonElement, not String)
+// MS Graph REST API docs say fieldsOfStudy/activities/awards are String type, but PCP's internal
+// pipeline requires arrays for these fields to propagate to PAPI. Confirmed: m365people08 (arrays)
+// propagated to PAPI, m365people09 (strings) did not. Coerce string→array here.
 function serializeEducationalActivityItem(item: any): string {
   if (typeof item === 'object' && item !== null) {
-    // Normalize program fields that PCP expects as arrays
     if (item.program && typeof item.program === 'object') {
       const program = { ...item.program };
       if (typeof program.fieldsOfStudy === 'string') {
@@ -222,7 +203,7 @@ export class PeopleItemIngester {
     }
 
     // Add custom properties (plain string values, no serialization needed)
-    for (const customName of PeopleSchemaBuilder.getCustomPropertyNames(this.csvColumns)) {
+    for (const customName of PeopleSchemaBuilder.getCustomPropertyNames(this.csvColumns || [])) {
       const value = csvRow[customName];
       if (value && value !== '') {
         properties[customName] = String(value);
@@ -277,30 +258,77 @@ export class PeopleItemIngester {
       properties.addresses = [JSON.stringify(addr)];
     }
 
-    // personEmails → [{"address":"...","type":"main"}]
-    const emailAddr = csvRow.mail || csvRow.email;
-    if (emailAddr) {
+    // personEmails → [{"address":"...","type":"..."}]
+    if (Array.isArray(csvRow.emails) && csvRow.emails.length > 0) {
       properties['emails@odata.type'] = 'Collection(String)';
-      properties.emails = [JSON.stringify({ address: emailAddr, type: 'main' })];
-    }
-
-    // personPhones → [{"number":"...","type":"mobile"},{"number":"...","type":"business"}]
-    const phoneEntries: string[] = [];
-    if (csvRow.mobilePhone) {
-      phoneEntries.push(JSON.stringify({ number: csvRow.mobilePhone, type: 'mobile' }));
-    }
-    if (csvRow.businessPhones) {
-      const phones = normalizeToArray(csvRow.businessPhones);
-      for (const p of phones) {
-        phoneEntries.push(JSON.stringify({ number: String(p), type: 'business' }));
+      properties.emails = csvRow.emails
+        .filter((e: any) => e && (e.address || e.Address))
+        .map((e: any) => JSON.stringify(stripEmpty(e) || e));
+    } else {
+      const emailAddr = csvRow.mail || csvRow.email;
+      if (emailAddr) {
+        properties['emails@odata.type'] = 'Collection(String)';
+        properties.emails = [JSON.stringify({ address: emailAddr, type: 'main' })];
       }
     }
-    if (phoneEntries.length > 0) {
+
+    // personPhones → [{"number":"...","type":"mobile"/"business"}]
+    if (Array.isArray(csvRow.phones) && csvRow.phones.length > 0) {
       properties['phones@odata.type'] = 'Collection(String)';
-      properties.phones = phoneEntries;
+      properties.phones = csvRow.phones
+        .filter((p: any) => p && (p.number || p.Number))
+        .map((p: any) => JSON.stringify(stripEmpty(p) || p));
+    } else {
+      const phoneEntries: string[] = [];
+      if (csvRow.mobilePhone) {
+        phoneEntries.push(JSON.stringify({ number: csvRow.mobilePhone, type: 'mobile' }));
+      }
+      if (csvRow.businessPhones) {
+        const phones = normalizeToArray(csvRow.businessPhones);
+        for (const p of phones) {
+          phoneEntries.push(JSON.stringify({ number: String(p), type: 'business' }));
+        }
+      }
+      if (phoneEntries.length > 0) {
+        properties['phones@odata.type'] = 'Collection(String)';
+        properties.phones = phoneEntries;
+      }
     }
 
-    // personWebAccounts — no CSV data yet, skipped when empty
+    // personWebAccounts — pass-through from preserved rich array, or skip when empty
+    if (Array.isArray(csvRow.webAccounts) && csvRow.webAccounts.length > 0) {
+      properties['webAccounts@odata.type'] = 'Collection(String)';
+      properties.webAccounts = csvRow.webAccounts
+        .filter((w: any) => w && typeof w === 'object')
+        .map((w: any) => JSON.stringify(stripEmpty(w) || w));
+    }
+
+    // personAnniversaries — pass-through from preserved rich array (Option B)
+    // The schema field is 'birthday' but the config has 'anniversaries' with full entity objects.
+    // The labeled property loop handles 'birthday' (scalar); this handles the rich array form.
+    if (!properties.birthday && Array.isArray(csvRow.anniversaries) && csvRow.anniversaries.length > 0) {
+      properties['birthday@odata.type'] = 'Collection(String)';
+      properties.birthday = csvRow.anniversaries.map(serializeAnniversaryItem);
+    }
+
+    // personNote — pass-through from preserved rich 'notes' array (Option B)
+    // The schema field is 'aboutMe' but the config has 'notes' with full personAnnotation entities.
+    if (!properties.aboutMe && Array.isArray(csvRow.notes) && csvRow.notes.length > 0) {
+      const first = csvRow.notes[0];
+      if (typeof first === 'object' && first !== null) {
+        properties.aboutMe = JSON.stringify(stripEmpty(first) || first);
+      } else if (typeof first === 'string') {
+        properties.aboutMe = JSON.stringify({ detail: { contentType: 'text', content: first } });
+      }
+    }
+
+    // personWebSite — pass-through from preserved 'websites' array (Option B)
+    if (!properties.mySite && Array.isArray(csvRow.websites) && csvRow.websites.length > 0) {
+      const first = csvRow.websites[0];
+      if (typeof first === 'object' && first?.webUrl) {
+        properties.mySite = JSON.stringify(stripEmpty(first) || first);
+      }
+    }
 
     // personLanguages → languageProficiency entity
     if (csvRow.languages) {

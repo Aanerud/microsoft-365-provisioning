@@ -57,9 +57,9 @@ config/users.config.json
 config/users.config.backup.json
 config/users.config.diff
 config/profile-data.json
-config/textcraft-europe.csv
-config/textcraft-europe.json
-config/sample-rich.json
+
+# Sample data is tracked (fictional Contoso data, safe to commit)
+!config/sample-*
 
 # Credentials
 cred.txt

@@ -26,6 +26,23 @@ Copilot answers:
 
 ---
 
+## Quick Start
+
+See what the tool does without Azure credentials:
+
+```bash
+git clone https://github.com/Aanerud/microsoft-365-provisioning.git
+cd microsoft-365-provisioning
+npm install && npm run build
+npm run option-b:validate -- config/sample-users.connector.config.json
+```
+
+This shows the exact JSON payload the tool would send to Microsoft Graph for each sample user, plus a mutation gate report validating data integrity. No Azure tenant required.
+
+To actually provision users and enrich profiles, see [Setup](#setup) below.
+
+---
+
 ## Why This Matters
 
 Microsoft 365 stores people data in 20 profile collections, defined in the [Beta Profile API](https://learn.microsoft.com/en-us/graph/api/resources/profile?view=graph-rest-beta). Each collection describes one facet of a person — their skills, languages, education, patents, and so on.
@@ -443,13 +460,18 @@ src/
   schema/
     user-property-schema.ts    # Property routing (Option A vs B)
 config/
-  textcraft-europe.csv         # 95-person demo (CSV — TextCraft Europe)
-  textcraft-europe.json        # 95-person demo (JSON, PascalCase — TextCraft Europe)
-  sample-rich.json             # 2-person sample (PascalCase, full entity depth)
+  sample-users.config.json                    # 2-person sample (Option A — Contoso)
+  sample-users.connector.config.json          # 2-person sample (Option B — rich entities)
+  sample-users.connector.properties.config.json # Custom property definitions
+  people-connector/
+    mutation-gate.ts           # Data integrity validation before ingestion
 tools/debug/
   profile-matrix.mjs           # Track connector data propagation across all users
   fetch-user-profile.mjs       # Full profile dump for a single user
+  dump-ingest-payload.mjs      # Show exact JSON payload for Graph API
   verify-ingestion-progress.mjs # Compare ingested items vs search index
+  verify-skills-searchable.mjs # Verify skills appear in Copilot search
+  manager-matrix.mjs           # Track manager hierarchy propagation
   check-people-connector-status.mjs # Connector health: schema, source, priority
   check-app-permissions.mjs    # Verify app registration permissions
   run-checklist.mjs            # Run all debug checks in sequence

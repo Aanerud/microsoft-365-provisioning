@@ -32,6 +32,16 @@ const SHORT = {
   addresses: 'ADR', emails: 'EML', phones: 'PHN', notes: 'NTE',
 };
 
+// Flat connector custom properties. Not in PAPI /profile (typed endpoint only
+// surfaces collections) so they're fetched from the connector item directly
+// via GET /external/connections/{id}/items/{itemId}. `abbrev` is shown in the
+// header; `present`/`absent` glyphs appear in each cell.
+const CUSTOM_PROPS = [
+  { name: 'workModality',       abbrev: 'WM ' },
+  { name: 'jobFamilyGroupName', abbrev: 'JFG' },
+  { name: 'jobFamilyName',      abbrev: 'JFN' },
+];
+
 async function getToken() {
   const tokenData = JSON.parse(await fs.readFile(TOKEN_CACHE_PATH, 'utf-8'));
   if (new Date(tokenData.expiresOn * 1000) < new Date()) {
@@ -43,6 +53,46 @@ async function getToken() {
 
 async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+function itemIdForEmail(email) {
+  // Matches createExternalItem: replace @ with - and . with -
+  return 'person-' + email.replace(/@/g, '-').replace(/\./g, '-');
+}
+
+/**
+ * Fetch one connector item and return just the custom-prop values we care
+ * about. Returns an object keyed by CUSTOM_PROPS.name. Missing item or
+ * missing prop → undefined for that key. Non-fatal on errors (returns {}).
+ */
+async function fetchConnectorItem(email, connectionId, token) {
+  if (!connectionId) return {};
+  const itemId = itemIdForEmail(email);
+  const url = `https://graph.microsoft.com/beta/external/connections/${connectionId}/items/${itemId}`;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 404) return {}; // item not in this connection
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+        await sleep(retryAfter * 1000);
+        continue;
+      }
+      if (!res.ok) {
+        if (attempt < MAX_RETRIES) { await sleep(RETRY_DELAY_MS * attempt); continue; }
+        return {};
+      }
+      const item = await res.json();
+      const props = item.properties || {};
+      const out = {};
+      for (const p of CUSTOM_PROPS) out[p.name] = props[p.name];
+      return out;
+    } catch {
+      if (attempt < MAX_RETRIES) { await sleep(RETRY_DELAY_MS * attempt); continue; }
+      return {};
+    }
+  }
+  return {};
 }
 
 async function fetchProfile(email, token) {
@@ -108,9 +158,12 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputPath) {
-  console.log('Usage: node tools/debug/profile-matrix.mjs --json config/users.config.json [--connection-id m365people03]');
+  console.log('Usage: node tools/debug/profile-matrix.mjs --json config/users.config.json [--connection-id m365people07]');
   console.log('');
-  console.log('Displays a matrix of profile collections populated from the connector.');
+  console.log('Displays a matrix of profile collections populated from the connector, plus');
+  console.log('the flat custom properties (workModality, jobFamilyGroupName, jobFamilyName)');
+  console.log('read directly from the connector items on --connection-id.');
+  console.log('');
   console.log('Run daily after Option B ingestion to track propagation progress.');
   process.exit(1);
 }
@@ -121,25 +174,38 @@ const startTime = Date.now();
 
 console.log(`Fetching profiles for ${users.length} users (with retry)...\n`);
 
+// Default connection id for custom-prop fetch — users can override with --connection-id
+const customConnectionId = connectionFilter || 'm365people07';
+
 // Header
 const nameWidth = 30;
-const header = 'Name'.padEnd(nameWidth) + COLLECTIONS.map(c => SHORT[c]).join(' ') + '  Source';
+const customHeader = CUSTOM_PROPS.map(p => p.abbrev).join(' ');
+const header = 'Name'.padEnd(nameWidth)
+  + COLLECTIONS.map(c => SHORT[c]).join(' ')
+  + '   ' + customHeader
+  + '  Source';
 console.log(header);
 console.log('─'.repeat(header.length));
 
 let totals = {};
 for (const c of COLLECTIONS) totals[c] = 0;
+const customTotals = {};
+for (const p of CUSTOM_PROPS) customTotals[p.name] = 0;
 let connectorCount = 0;
 let fetchedCount = 0;
 let failedCount = 0;
 
 for (const user of users) {
-  const profile = await fetchProfile(user.email, token);
+  // Fetch profile + connector item concurrently for speed
+  const [profile, customProps] = await Promise.all([
+    fetchProfile(user.email, token),
+    fetchConnectorItem(user.email, customConnectionId, token),
+  ]);
   fetchedCount++;
 
   if (!profile) {
     failedCount++;
-    console.log(user.name.substring(0, nameWidth - 1).padEnd(nameWidth) + COLLECTIONS.map(() => ' · ').join('') + '  (failed)');
+    console.log(user.name.substring(0, nameWidth - 1).padEnd(nameWidth) + COLLECTIONS.map(() => ' · ').join('') + '   ' + CUSTOM_PROPS.map(() => ' · ').join(' ') + '  (failed)');
     continue;
   }
 
@@ -167,11 +233,23 @@ for (const user of users) {
     }
   }
 
+  // Custom-prop cells from the connector item
+  const customCells = [];
+  for (const p of CUSTOM_PROPS) {
+    const v = customProps?.[p.name];
+    if (v !== undefined && v !== null && v !== '') {
+      customCells.push(' ✓ ');
+      customTotals[p.name]++;
+    } else {
+      customCells.push(' · ');
+    }
+  }
+
   if (hasConnector) connectorCount++;
 
   const src = hasConnector ? 'CONN' : 'aad';
   const name = user.name.substring(0, nameWidth - 1).padEnd(nameWidth);
-  console.log(name + cells.join('') + '  ' + src);
+  console.log(name + cells.join('') + '   ' + customCells.join('') + '  ' + src);
 
   // Pause between batches to avoid throttling
   if (fetchedCount % BATCH_SIZE === 0) {
@@ -183,17 +261,27 @@ for (const user of users) {
 // Totals
 const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
 console.log('─'.repeat(header.length));
-console.log('TOTALS'.padEnd(nameWidth) + COLLECTIONS.map(c => {
+const collectionTotals = COLLECTIONS.map(c => {
   const v = totals[c];
   return v > 0 ? String(v).padStart(2).padEnd(3) : ' · ';
-}).join(''));
+}).join('');
+const customTotalsRow = CUSTOM_PROPS.map(p => {
+  const v = customTotals[p.name];
+  return v > 0 ? String(v).padStart(2).padEnd(3) : ' · ';
+}).join('');
+console.log('TOTALS'.padEnd(nameWidth) + collectionTotals + '   ' + customTotalsRow);
 
 console.log('');
 console.log(`${connectorCount}/${users.length} users have connector data (${Math.round(connectorCount / users.length * 100)}%)`);
+for (const p of CUSTOM_PROPS) {
+  console.log(`  ${p.abbrev} ${p.name.padEnd(22)} ${customTotals[p.name]}/${users.length} users (connector item on ${customConnectionId})`);
+}
 if (failedCount > 0) {
   console.log(`${failedCount} fetch failures (retried ${MAX_RETRIES}x each — likely throttling or mailbox not provisioned)`);
 }
 console.log(`Completed in ${elapsed}s`);
 console.log('');
-console.log('Legend: N = items from connector, . = data from other source, · = empty');
+console.log('Legend:');
+console.log('  Profile collections: N = items from connector, . = data from other source, · = empty');
+console.log('  Custom properties:   ✓ = set on connector item (' + customConnectionId + '), · = unset/missing');
 console.log('Tip: re-run daily to track propagation. Expect 6-48h per CAPIv2 export cycle.');

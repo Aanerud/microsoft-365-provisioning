@@ -24,7 +24,7 @@ dotenv.config();
 
 const CONNECTION_ID = process.argv[2] || 'm365people3';
 const DISPLAY_NAME = process.argv[3] || 'M365 Custom Properties';
-const WEB_URL = process.argv[4] || process.env.SHAREPOINT_URL || 'https://textcraft.sharepoint.com';
+const WEB_URL = process.argv[4] || process.env.SHAREPOINT_URL || 'https://yourdomain.sharepoint.com';
 
 const { AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET } = process.env;
 

@@ -29,7 +29,9 @@ import { PeopleItemIngester } from './people-connector/item-ingester.js';
 import { PeopleSchemaBuilder } from './people-connector/schema-builder.js';
 import { getOptionBProperties } from './schema/user-property-schema.js';
 import { applyOidCacheToRows, ensureOidCacheWithAuth, loadOidCache, getOidCachePath } from './oid-cache.js';
-import { loadRowsFromJson, validateJsonInput } from './json-loader.js';
+import readline from 'readline';
+import { loadRowsFromJson, validateJsonInput, loadPropertyDefinitions, getCollectionFieldNames, buildDescriptionsMap, renderCollectionProperties } from './json-loader.js';
+import { runMutationGate, formatMutationReport } from './people-connector/mutation-gate.js';
 
 dotenv.config();
 
@@ -49,6 +51,9 @@ const STANDARD_USER_FIELDS = new Set([
   'addresses',
   // Handled by Option A group membership (update-groups.ts), not connector:
   'groups',
+  // Preserved rich arrays (Option B pass-through) — handled by item-ingester composite handlers,
+  // not by the labeled property loop. Must not be auto-detected as custom properties.
+  'anniversaries', 'emails', 'phones', 'webAccounts', 'notes', 'websites',
 ]);
 
 // Profile API only — no people data label, can't go through connector
@@ -60,6 +65,7 @@ interface ConnectorOptions {
   connectionId: string;
   setupConnector: boolean;
   dryRun: boolean;
+  validateOnly: boolean;
 }
 
 function getLabeledOptionBFieldNames(): string[] {
@@ -74,6 +80,7 @@ function parseArgs(): ConnectorOptions {
     connectionId: 'm365people3',
     setupConnector: false,
     dryRun: false,
+    validateOnly: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -92,6 +99,9 @@ function parseArgs(): ConnectorOptions {
         break;
       case '--dry-run':
         options.dryRun = true;
+        break;
+      case '--validate-only':
+        options.validateOnly = true;
         break;
     }
   }
@@ -134,7 +144,7 @@ async function loadConnectorRowsFromJson(jsonPath: string): Promise<{
   allColumns: string[];
   ignoredFields: string[];
 }> {
-  const records = await loadRowsFromJson(jsonPath);
+  const records = await loadRowsFromJson(jsonPath, 'optionB');
 
   // Validate
   const validation = validateJsonInput(records);
@@ -200,7 +210,8 @@ async function enrichViaConnector(
   ignoredFields: string[],
   options: ConnectorOptions,
   graphClient: GraphClient,
-  logger: Logger
+  logger: Logger,
+  descriptions: Record<string, string> = {}
 ): Promise<{ successful: number; failed: number }> {
   console.log('\n' + '='.repeat(60));
   console.log('Option B: Graph Connector Enrichment (Copilot-Searchable)');
@@ -231,13 +242,36 @@ async function enrichViaConnector(
   if (options.setupConnector) {
     console.log('Setting up Graph Connector...');
 
+    // Check for missing custom property descriptions before creating schema.
+    // Microsoft docs recommend descriptions so Copilot can reason about fields.
+    // https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/build-connectors-with-people-data
+    const customNames = PeopleSchemaBuilder.getCustomPropertyNames(csvColumns);
+    const missingDescriptions = customNames.filter(n => !descriptions[n]);
+
+    if (missingDescriptions.length > 0 && !options.dryRun) {
+      console.warn(`\n⚠️  ${missingDescriptions.length} custom properties are missing descriptions:`);
+      for (const m of missingDescriptions) console.warn(`    - ${m}`);
+      console.warn(`\nDescriptions help Copilot reason about custom fields.`);
+      console.warn(`Expected in users.connector.config.json per the schema contract.`);
+      console.warn(`See: https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/build-connectors-with-people-data\n`);
+
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer: string = await new Promise(resolve =>
+        rl.question('Continue without descriptions? (y/N) ', (a) => { rl.close(); resolve(a); })
+      );
+      if (answer.toLowerCase() !== 'y') {
+        console.log('Aborted. Add descriptions to the config and retry.');
+        process.exit(0);
+      }
+    }
+
     await connectionManager.createConnection(
       'M365 Provision People Data',
       'People data enrichment for Copilot search (labeled + custom properties)'
     );
 
-    // Register schema with people data labels + custom properties
-    const schema = PeopleSchemaBuilder.buildPeopleSchema(csvColumns);
+    // Register schema with people data labels + custom properties (+ descriptions if available)
+    const schema = PeopleSchemaBuilder.buildPeopleSchema(csvColumns, descriptions);
     const labeledCount = schema.filter((p: any) => p.labels).length;
     const customCount = schema.length - labeledCount;
     console.log(`Schema: ${labeledCount} labeled properties + ${customCount} custom searchable properties.`);
@@ -323,6 +357,7 @@ async function run(): Promise<void> {
   console.log(`  Connection ID: ${options.connectionId}`);
   console.log(`  Setup Connector: ${options.setupConnector ? 'Yes' : 'No'}`);
   console.log(`  Dry Run: ${options.dryRun ? 'Yes' : 'No'}`);
+  if (options.validateOnly) console.log(`  Validate Only: Yes`);
   console.log('');
   console.log('Note: Run Option A provisioning before Option B enrichment.');
   console.log('');
@@ -349,6 +384,7 @@ async function run(): Promise<void> {
   let connectorRows: any[];
   let csvColumns: string[];
   let ignoredFields: string[];
+  let rawRecords: any[] | undefined;
 
   if (options.csvPath && options.jsonPath) {
     console.log('Loading profiles from CSV + JSON (merge mode)...');
@@ -358,6 +394,8 @@ async function run(): Promise<void> {
     ignoredFields = merged.ignoredFields;
   } else if (options.jsonPath) {
     console.log('Loading profiles from JSON...');
+    const rawContent = await fs.readFile(options.jsonPath, 'utf-8');
+    rawRecords = JSON.parse(rawContent);
     const json = await loadConnectorRowsFromJson(options.jsonPath);
     connectorRows = json.rows;
     csvColumns = json.allColumns;
@@ -370,6 +408,25 @@ async function run(): Promise<void> {
     ignoredFields = csv.ignoredFields;
   }
   console.log(`Loaded ${connectorRows.length} profiles`);
+
+  // Load property definitions from sidecar config (descriptions + collection types)
+  const inputPath0 = options.jsonPath || options.csvPath!;
+  const propertiesPath = inputPath0.replace(/\.config\.json$/, '.properties.config.json');
+  const propertyDefs = loadPropertyDefinitions(propertiesPath);
+  const collectionFields = getCollectionFieldNames(propertyDefs);
+  const descriptions = buildDescriptionsMap(propertyDefs);
+  if (propertyDefs.length > 0) {
+    console.log(`Properties config: ${propertyDefs.length} definitions from ${path.basename(propertiesPath)}`);
+    if (collectionFields.length > 0) console.log(`  Collections (→ YAML): ${collectionFields.join(', ')}`);
+  } else {
+    console.log(`Properties config: not found (${path.basename(propertiesPath)})`);
+  }
+
+  // Render collection-type custom properties as YAML strings (Path B safe)
+  if (collectionFields.length > 0) {
+    for (const r of connectorRows) renderCollectionProperties(r, collectionFields);
+  }
+
   const labeledOptionBFields = getLabeledOptionBFieldNames();
   const connectorFields = labeledOptionBFields.filter(field => csvColumns.includes(field));
   const customPropertyNames = PeopleSchemaBuilder.getCustomPropertyNames(csvColumns);
@@ -461,6 +518,37 @@ async function run(): Promise<void> {
     }
   }
 
+  // ── Mutation Gate ──
+  // Compare raw config input vs normalized pipeline output to detect silent mutations.
+  // Only runs when raw records are available (JSON input mode).
+  if (rawRecords && rawRecords.length > 0) {
+    const gateResult = runMutationGate(rawRecords, connectorRows);
+    const report = formatMutationReport(gateResult);
+    console.log(report);
+
+    if (options.validateOnly) {
+      process.exit(gateResult.clean ? 0 : 1);
+    }
+
+    if (!gateResult.clean && !options.dryRun) {
+      const prompt = gateResult.totalMutations > 0
+        ? `\n${gateResult.totalMutations} mutations and ${gateResult.totalWarnings} warnings found. Continue anyway? [y/N] `
+        : `\n${gateResult.totalWarnings} warnings found (0 mutations). Continue anyway? [y/N] `;
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>(resolve => {
+        rl.question(prompt, resolve);
+      });
+      rl.close();
+      if (answer.toLowerCase() !== 'y') {
+        console.log('Aborted.');
+        process.exit(1);
+      }
+    }
+  } else if (options.validateOnly) {
+    console.log('Validate-only mode requires JSON input (--json). CSV input does not support mutation detection.');
+    process.exit(1);
+  }
+
   // Authenticate with app-only auth (client secret)
   const clientSecret = process.env.AZURE_CLIENT_SECRET;
   if (!clientSecret) {
@@ -480,7 +568,8 @@ async function run(): Promise<void> {
     ignoredFields,
     options,
     graphClient,
-    logger
+    logger,
+    descriptions
   );
 
   // Summary

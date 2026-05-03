@@ -71,7 +71,7 @@ Use Graph Explorer or curl:
 
 ```bash
 # Get Option A properties for Test User Alpha
-GET https://graph.microsoft.com/beta/users/test.alpha@a830edad9050849coep9vqp9bog.onmicrosoft.com
+GET https://graph.microsoft.com/beta/users/test.alpha@yourdomain.onmicrosoft.com
 ?$select=otherMails,faxNumber,preferredDataLocation
 ```
 

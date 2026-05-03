@@ -1,0 +1,52 @@
+[
+  {
+    "MailNickName": "alex.r",
+    "DisplayName": "Alex Rivera",
+    "FirstName": "Alex",
+    "LastName": "Rivera",
+    "Department": "Engineering",
+    "JobTitle": "CTO",
+    "CompanyName": "Contoso",
+    "OfficeLocation": "Seattle, WA",
+    "Manager": null,
+    "Address": {
+      "Street": "1 Contoso Way",
+      "City": "Seattle",
+      "State": "WA",
+      "PostalCode": "98101",
+      "Country": "United States",
+      "CountryOrRegion": "United States",
+      "PostOfficeBox": "",
+      "Type": "business"
+    },
+    "Licenses": [
+      "Office 365 E5 (no Teams)"
+    ],
+    "UsageLocation": "US"
+  },
+  {
+    "MailNickName": "mei.c",
+    "DisplayName": "Mei Chen",
+    "FirstName": "Mei",
+    "LastName": "Chen",
+    "Department": "Engineering",
+    "JobTitle": "Senior Software Engineer",
+    "CompanyName": "Contoso",
+    "OfficeLocation": "Oslo, Norway",
+    "Manager": "alex.r",
+    "Address": {
+      "Street": "Aker Brygge 1",
+      "City": "Oslo",
+      "State": "",
+      "PostalCode": "0250",
+      "Country": "Norway",
+      "CountryOrRegion": "Norway",
+      "PostOfficeBox": "",
+      "Type": "business"
+    },
+    "Licenses": [
+      "Office 365 E5 (no Teams)"
+    ],
+    "UsageLocation": "NO"
+  }
+]
